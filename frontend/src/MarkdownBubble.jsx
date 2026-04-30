@@ -8,6 +8,7 @@ const mdComponents = {
   strong: (props) => <strong className="md-strong" {...props} />,
   em: (props) => <em className="md-em" {...props} />,
   a: (props) => <a className="md-a" target="_blank" rel="noopener noreferrer" {...props} />,
+  pre: (props) => <pre className="md-pre" {...props} />,
   code: ({ inline, className, children, ...props }) => {
     if (inline) {
       return (
@@ -17,11 +18,9 @@ const mdComponents = {
       );
     }
     return (
-      <pre className="md-pre">
-        <code className={className || 'md-code-block'} {...props}>
-          {children}
-        </code>
-      </pre>
+      <code className={className || 'md-code-block'} {...props}>
+        {children}
+      </code>
     );
   },
   h1: (props) => <p className="md-heading md-h1" {...props} />,

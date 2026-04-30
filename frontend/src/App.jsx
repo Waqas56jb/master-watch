@@ -156,10 +156,9 @@ export default function App() {
             <div key={`msg-${i}`} className={`msg-row ${m.role}`}>
               {m.role === 'bot' && <div className="bot-avatar">⌚</div>}
               <div>
-                <div
-                  className="msg-bubble"
-                  dangerouslySetInnerHTML={{ __html: formatBubbleHtml(m.text) }}
-                />
+                <div className={`msg-bubble ${m.role === 'bot' ? 'msg-bubble--md' : ''}`}>
+                  {m.role === 'bot' ? <MarkdownBubble>{m.text}</MarkdownBubble> : m.text}
+                </div>
                 <div className="msg-time">{m.time}</div>
               </div>
             </div>
