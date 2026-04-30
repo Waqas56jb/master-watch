@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
 
-const API_URL = '/chat';
+// Dev: Vite proxy → `/chat`. Production: deployed API (override with VITE_API_URL if needed).
+const PRODUCTION_API_BASE = 'https://master-watch-fwr2.vercel.app';
+const envBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const API_BASE = envBase || (import.meta.env.PROD ? PRODUCTION_API_BASE : '');
+const API_URL = API_BASE ? `${API_BASE}/chat` : '/chat';
 
 const WELCOME_MARKDOWN = `Willkommen bei **MisterWatch**! 👋
 

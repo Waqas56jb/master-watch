@@ -10,8 +10,32 @@ const PORT = process.env.PORT || 3000;
 // ── OpenAI Client ──
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ── CORS (separate frontend on Vercel / other hosts) ──
+// ALLOWED_ORIGINS=comma-separated list, e.g. https://my-app.vercel.app,https://www.example.com
+// If unset, reflect the request Origin (works for any frontend calling this API).
+function buildCorsOrigin() {
+  const raw = process.env.ALLOWED_ORIGINS;
+  if (raw && raw.trim()) {
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return true;
+}
+
+const corsOptions = {
+  origin: buildCorsOrigin(),
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: [],
+  optionsSuccessStatus: 204,
+  maxAge: 86400,
+};
+
 // ── Middleware ──
-app.use(cors());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 const frontendDist = path.join(__dirname, '../frontend/dist');
