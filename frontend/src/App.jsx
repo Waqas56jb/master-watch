@@ -44,26 +44,6 @@ export default function App() {
     scrollToBottom();
   }, [entries, isWaiting, showQuickReplies, scrollToBottom]);
 
-  // Stable height when mobile keyboard opens (avoids layout “jumping” vs 100vh alone)
-  useEffect(() => {
-    const root = document.documentElement;
-    const sync = () => {
-      const vv = window.visualViewport;
-      const h = vv ? vv.height : window.innerHeight;
-      root.style.setProperty('--vvh', `${Math.round(h)}px`);
-    };
-    sync();
-    window.addEventListener('resize', sync);
-    window.visualViewport?.addEventListener('resize', sync);
-    window.visualViewport?.addEventListener('scroll', sync);
-    return () => {
-      window.removeEventListener('resize', sync);
-      window.visualViewport?.removeEventListener('resize', sync);
-      window.visualViewport?.removeEventListener('scroll', sync);
-      root.style.removeProperty('--vvh');
-    };
-  }, []);
-
   const sendMessage = useCallback(
     async (forcedText) => {
       const raw = forcedText !== undefined ? forcedText : input;
@@ -75,7 +55,10 @@ export default function App() {
 
       const userTime = getTime();
       setEntries((prev) => [...prev, { role: 'user', text, time: userTime }]);
-      conversationHistoryRef.current = [...conversationHistoryRef.current, { role: 'user', content: text }];
+      conversationHistoryRef.current = [
+        ...conversationHistoryRef.current,
+        { role: 'user', content: text },
+      ];
 
       setIsWaiting(true);
 
@@ -135,6 +118,8 @@ export default function App() {
   return (
     <div className="app-root">
       <div className="chat-widget">
+
+        {/* ── Header ── */}
         <div className="chat-header">
           <div className="header-logo">⌚</div>
           <div className="header-info">
@@ -146,6 +131,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* ── Messages ── */}
         <div className="messages-area" ref={messagesAreaRef}>
           <div className="date-label">Heute</div>
 
@@ -162,7 +148,12 @@ export default function App() {
           {showQuickReplies && (
             <div className="quick-replies">
               {QUICK_ACTIONS.map((q) => (
-                <button key={q.text} type="button" className="quick-btn" onClick={() => sendQuick(q.text)}>
+                <button
+                  key={q.text}
+                  type="button"
+                  className="quick-btn"
+                  onClick={() => sendQuick(q.text)}
+                >
                   {q.label}
                 </button>
               ))}
@@ -174,7 +165,11 @@ export default function App() {
               {m.role === 'bot' && <div className="bot-avatar">⌚</div>}
               <div>
                 <div className={`msg-bubble ${m.role === 'bot' ? 'msg-bubble--md' : ''}`}>
-                  {m.role === 'bot' ? <MarkdownBubble>{m.text}</MarkdownBubble> : m.text}
+                  {m.role === 'bot' ? (
+                    <MarkdownBubble>{m.text}</MarkdownBubble>
+                  ) : (
+                    m.text
+                  )}
                 </div>
                 <div className="msg-time">{m.time}</div>
               </div>
@@ -185,49 +180,58 @@ export default function App() {
             <div className="msg-row bot typing-indicator">
               <div className="bot-avatar">⌚</div>
               <div className="typing-dots">
-                <span />
-                <span />
-                <span />
+                <span /><span /><span />
               </div>
             </div>
           )}
         </div>
 
+        {/* ── Composer (input + footer) ── */}
         <div className="chat-composer">
           <div className="input-area">
-          <div className="input-wrap">
-            <textarea
-              ref={textareaRef}
-              className="user-input"
-              rows={2}
-              enterKeyHint="send"
-              autoComplete="off"
-              autoCorrect="on"
-              placeholder="Schreib deine Frage…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
+            <div className="input-wrap">
+              <textarea
+                ref={textareaRef}
+                className="user-input"
+                rows={1}
+                enterKeyHint="send"
+                autoComplete="off"
+                autoCorrect="on"
+                placeholder="Schreib deine Frage…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={onKeyDown}
+                disabled={isWaiting}
+              />
+            </div>
+            <button
+              type="button"
+              className="send-btn"
               disabled={isWaiting}
-            />
-          </div>
-          <button
-            type="button"
-            className="send-btn"
-            disabled={isWaiting}
-            onClick={() => sendMessage()}
-            aria-label="Senden"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
+              onClick={() => sendMessage()}
+              aria-label="Senden"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
           </div>
 
           <div className="chat-footer">
             Unterstützt von <span>MisterWatch KI</span> · misterwatches.store
           </div>
         </div>
+
       </div>
     </div>
   );
