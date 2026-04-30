@@ -44,12 +44,25 @@ export default function App() {
     scrollToBottom();
   }, [entries, isWaiting, showQuickReplies, scrollToBottom]);
 
+  // Stable height when mobile keyboard opens (avoids layout “jumping” vs 100vh alone)
   useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 100)}px`;
-  }, [input]);
+    const root = document.documentElement;
+    const sync = () => {
+      const vv = window.visualViewport;
+      const h = vv ? vv.height : window.innerHeight;
+      root.style.setProperty('--vvh', `${Math.round(h)}px`);
+    };
+    sync();
+    window.addEventListener('resize', sync);
+    window.visualViewport?.addEventListener('resize', sync);
+    window.visualViewport?.addEventListener('scroll', sync);
+    return () => {
+      window.removeEventListener('resize', sync);
+      window.visualViewport?.removeEventListener('resize', sync);
+      window.visualViewport?.removeEventListener('scroll', sync);
+      root.style.removeProperty('--vvh');
+    };
+  }, []);
 
   const sendMessage = useCallback(
     async (forcedText) => {
@@ -180,12 +193,16 @@ export default function App() {
           )}
         </div>
 
-        <div className="input-area">
+        <div className="chat-composer">
+          <div className="input-area">
           <div className="input-wrap">
             <textarea
               ref={textareaRef}
               className="user-input"
-              rows={1}
+              rows={2}
+              enterKeyHint="send"
+              autoComplete="off"
+              autoCorrect="on"
               placeholder="Schreib deine Frage…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -205,10 +222,11 @@ export default function App() {
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
           </button>
-        </div>
+          </div>
 
-        <div className="chat-footer">
-          Unterstützt von <span>MisterWatch KI</span> · misterwatches.store
+          <div className="chat-footer">
+            Unterstützt von <span>MisterWatch KI</span> · misterwatches.store
+          </div>
         </div>
       </div>
     </div>
