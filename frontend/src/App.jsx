@@ -1,25 +1,76 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
 
-// Dev: Vite proxy → `/chat`. Production: deployed API (override with VITE_API_URL if needed).
 const PRODUCTION_API_BASE = 'https://master-watch-fwr2.vercel.app';
 const envBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-const API_BASE = envBase || (import.meta.env.PROD ? PRODUCTION_API_BASE : '');
-const API_URL = API_BASE ? `${API_BASE}/chat` : '/chat';
+const API_ROOT = envBase || (import.meta.env.PROD ? PRODUCTION_API_BASE : '');
+const API_URL = API_ROOT ? `${API_ROOT}/chat` : '/chat';
+const THEME_URL = API_ROOT ? `${API_ROOT}/api/public/chatbot-theme` : '/api/public/chatbot-theme';
+
+const CHAT_STORAGE = 'mw_chat_state_v3';
+const HISTORY_CAP = 20;
 
 const WELCOME_MARKDOWN = `Willkommen bei **MisterWatch**! 👋
 
-Ich helfe dir bei Fragen zu Uhren, Lieferung und Zahlung.
+Ich helfe dir bei **Uhren**, **Buchungen**, **Support** und mehr.
 
-**Wie kann ich dir heute helfen?**`;
+Du kannst:
+- 📦 eine **Online-Buchung** anfragen
+- 💬 **Support** erreichen oder eine **Lead-Anfrage** stellen  
+- ⭐ **Feedback** hinterlassen
+
+**Was möchtest du tun?**`;
 
 const QUICK_ACTIONS = [
+  { label: '📦 Buchung', text: 'Ich möchte eine Uhr buchen/reservieren. Welche Daten brauchst du von mir?' },
+  { label: '💬 Support', text: 'Ich habe ein Problem und brauche Hilfe vom Support-Team.' },
+  { label: '⭐ Feedback', text: 'Ich möchte Feedback zum Shop geben.' },
   { label: '🏅 Qualitäten', text: 'Welche Qualitätsstufen gibt es?' },
   { label: '💰 Preise', text: 'Was kosten eure Uhren?' },
   { label: '📦 Lieferzeit', text: 'Wie lange dauert die Lieferung?' },
   { label: '💳 Zahlung', text: 'Welche Zahlungsmethoden bietet ihr an?' },
-  { label: '↩️ Rückgabe', text: 'Kann ich die Uhr zurückgeben?' },
 ];
+
+function rgbFromHex(hex) {
+  const raw = String(hex || '').replace('#', '');
+  if (!raw) return { r: 34, g: 197, b: 94 };
+  const h = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw.padEnd(6, '0').slice(0, 6);
+  const n = Number.parseInt(h, 16);
+  if (!Number.isFinite(n)) return { r: 34, g: 197, b: 94 };
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function applyThemeToRoot(theme) {
+  const root = document.documentElement;
+  if (!theme || typeof theme !== 'object') return;
+  const t = theme;
+  root.style.setProperty('--bg', t.bg ?? '#0a0a0a');
+  root.style.setProperty('--surface', t.surface ?? '#111111');
+  root.style.setProperty('--card', t.card ?? '#181818');
+  root.style.setProperty('--border', t.border ?? '#2a2a2a');
+  root.style.setProperty('--accent', t.accent ?? '#22c55e');
+  root.style.setProperty('--text', t.text ?? '#f5f5f5');
+  root.style.setProperty('--text-dim', t.textDim ?? '#888888');
+  root.style.setProperty('--user-bubble', t.userBubble ?? '#22c55e');
+  root.style.setProperty('--bot-bubble', t.botBubble ?? '#1e1e1e');
+  const { r, g, b } = rgbFromHex(t.accent);
+  root.style.setProperty('--accent-dim', `rgba(${r},${g},${b},0.14)`);
+  root.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.35)`);
+  root.style.setProperty('--accent-soft-bg-1', `rgba(${r},${g},${b},0.06)`);
+  root.style.setProperty('--accent-soft-bg-2', `rgba(${r},${g},${b},0.04)`);
+  root.style.setProperty('--accent-soft-ring', `rgba(${r},${g},${b},0.08)`);
+  root.style.setProperty('--md-a-border', `rgba(${r},${g},${b},0.35)`);
+}
+
+function persistChat(entries, history) {
+  try {
+    const hist = Array.isArray(history) ? history.slice(-HISTORY_CAP * 2) : [];
+    const ent = Array.isArray(entries) ? entries.slice(-60) : [];
+    sessionStorage.setItem(CHAT_STORAGE, JSON.stringify({ entries: ent, history: hist }));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 function getTime() {
   return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -34,6 +85,7 @@ export default function App() {
   const conversationHistoryRef = useRef([]);
   const messagesAreaRef = useRef(null);
   const textareaRef = useRef(null);
+  const hydratedRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     const el = messagesAreaRef.current;
@@ -43,6 +95,43 @@ export default function App() {
   useEffect(() => {
     scrollToBottom();
   }, [entries, isWaiting, showQuickReplies, scrollToBottom]);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetch(THEME_URL);
+        const data = await r.json();
+        if (!cancel && data.theme) applyThemeToRoot(data.theme);
+      } catch {
+        applyThemeToRoot({});
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    try {
+      const raw = sessionStorage.getItem(CHAT_STORAGE);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (Array.isArray(s.history) && s.history.length) {
+        conversationHistoryRef.current = s.history.filter(
+          (m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'
+        );
+      }
+      if (Array.isArray(s.entries) && s.entries.length) {
+        setEntries(s.entries);
+        setShowQuickReplies(false);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const sendMessage = useCallback(
     async (forcedText) => {
@@ -54,11 +143,16 @@ export default function App() {
       setShowQuickReplies(false);
 
       const userTime = getTime();
-      setEntries((prev) => [...prev, { role: 'user', text, time: userTime }]);
       conversationHistoryRef.current = [
         ...conversationHistoryRef.current,
         { role: 'user', content: text },
-      ];
+      ].slice(-HISTORY_CAP);
+
+      setEntries((prev) => {
+        const next = [...prev, { role: 'user', text, time: userTime }];
+        persistChat(next, conversationHistoryRef.current);
+        return next;
+      });
 
       setIsWaiting(true);
 
@@ -71,31 +165,43 @@ export default function App() {
         const data = await response.json();
 
         if (data.reply) {
-          const botTime = getTime();
-          setEntries((prev) => [...prev, { role: 'bot', text: data.reply, time: botTime }]);
           conversationHistoryRef.current = [
             ...conversationHistoryRef.current,
             { role: 'assistant', content: data.reply },
-          ];
+          ].slice(-HISTORY_CAP);
+          const botTime = getTime();
+          setEntries((prev) => {
+            const next = [...prev, { role: 'bot', text: data.reply, time: botTime }];
+            persistChat(next, conversationHistoryRef.current);
+            return next;
+          });
         } else {
-          setEntries((prev) => [
+          setEntries((prev) => {
+            const next = [
+              ...prev,
+              {
+                role: 'bot',
+                text: 'Entschuldigung, es gab einen Fehler. Bitte versuche es erneut.',
+                time: getTime(),
+              },
+            ];
+            persistChat(next, conversationHistoryRef.current);
+            return next;
+          });
+        }
+      } catch {
+        setEntries((prev) => {
+          const next = [
             ...prev,
             {
               role: 'bot',
-              text: 'Entschuldigung, es gab einen Fehler. Bitte versuche es erneut.',
+              text: 'Verbindungsfehler. Bitte überprüfe deine Internetverbindung und versuche es erneut.',
               time: getTime(),
             },
-          ]);
-        }
-      } catch {
-        setEntries((prev) => [
-          ...prev,
-          {
-            role: 'bot',
-            text: 'Verbindungsfehler. Bitte überprüfe deine Internetverbindung und versuche es erneut.',
-            time: getTime(),
-          },
-        ]);
+          ];
+          persistChat(next, conversationHistoryRef.current);
+          return next;
+        });
       } finally {
         setIsWaiting(false);
       }

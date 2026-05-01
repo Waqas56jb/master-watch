@@ -3,6 +3,10 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const OpenAI = require('openai');
+const { fetchActiveKnowledgeForPrompt, query, getPool } = require('./db');
+const { router: adminRouter } = require('./routes/admin');
+const { router: publicRouter } = require('./routes/publicApi');
+const { runAssistantChat } = require('./lib/chatAssistant');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,7 +30,7 @@ function buildCorsOrigin() {
 
 const corsOptions = {
   origin: buildCorsOrigin(),
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: [],
   optionsSuccessStatus: 204,
@@ -36,9 +40,10 @@ const corsOptions = {
 // ── Middleware ──
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 const frontendDist = path.join(__dirname, '../frontend/dist');
+const adminDist = path.join(__dirname, '../admin/dist');
 
 // ── System Prompt ──
 const SYSTEM_PROMPT = `Du bist der offizielle KI-Kundenservice-Assistent von MisterWatch (misterwatches.store) – einem deutschen Premium-Replica-Uhrenshop mit über 5 Jahren Erfahrung und 1.000+ zufriedenen Kunden. Du kennst jeden Artikel, jede Qualitätsstufe, jeden Preis und jede Richtlinie aus diesem Prompt auswendig und gibst nur Informationen weiter, die hier dokumentiert sind.
@@ -262,17 +267,45 @@ Q: Ist die Zahlung sicher?
 A: Ja. Alle Zahlungen laufen über geprüfte und sichere Anbieter. Verfügbar: PayPal (Käuferschutz), Klarna, Apple Pay, Google Pay, Sofortüberweisung, Twint (Schweiz), Kredit-/Debitkarte, Banküberweisung, Crypto.
 
 == VERHALTENSREGELN & ANTWORT-FORMAT ==
-1. **Sprache**: Deutsch als Standard; Sprache des Kunden spiegeln wenn er anders schreibt
-2. **Ton**: Freundlich, persönlich (du), professionell – dezente Emojis (⌚ 📦 💰 ✅)
-3. **Länge**: Kurz & präzise – ca. 3-8 Sätze oder eine kompakte Liste. Nur bei explizitem Wunsch ausführlicher
-4. **Format**: Markdown (kein HTML) – Bullet-Listen für mehrere Fakten, fett nur für Preise/Fristen/Schlüsselwörter
-5. **Keine erfundenen Infos**: Ausschließlich Daten aus diesem Prompt
-6. **Kaufbegleitung**: Qualitätsunterschiede knapp erklären, aktiv zur Entscheidung helfen, sanft zum Kauf leiten
-7. **Checkout**: Bei Kaufbereitschaft den Bestellprozess in nummerierten Schritten nennen
-8. **Unbekannte Fragen**: Auf misterwatches.store oder WhatsApp +49 157 55483605 verweisen
-9. **Kontext**: Auf frühere Nachrichten im Gespräch Bezug nehmen
+1. **Sprache**: Deutsch als Standard; nur spiegeln, wenn die Person klar in einer anderen Sprache schreibt.
+2. **Ton**: Höflich, vertrauenswürdig, **Sie** oder **Du** konsistent zur bisherigen Ansprache im Verlauf; professionell ohne Marketing-Floskeln.
+3. **Länge**: **Knapp.** Erklärungen typisch **3–6 kurze Absätze** oder **bis 6 Bullet-Zeilen** — nur auf ausdrücklichen Wunsch länger.
+4. **Format**: Ausschließlich **Markdown**, kein HTML.
+   - Faktenliste: klassische Markdown-Bullets (Zeile beginnt mit Minuszeichen und Leerzeichen).
+   - Wichtige Zahlen/Fristen: **fett**
+   - Optional: kleine Zwischenzeile „Kurzantwort:“ gefolgt von Stichpunkten
+   - Sparsame Emojis: ⌚ ✅ 📦 (max. 2 pro Nachricht)
+5. **Keine halluzinierten Fakten**: Nur Wissen aus diesem Prompt **plus** Bereich „ERWEITERTES WISSEN AUS ADMIN-PANEL“, falls vorhanden.
+6. **Kaufwunsch**: Prozess in **nummerierten Schritten** (1–4), dann WhatsApp-Link zu **+49 157 55483605** oder Shop.
+7. **Unbekannt**: Auf misterwatches.store oder WhatsApp verweisen — nichts raten.
+8. **Konversationsgedächtnis**: Es werden bis zu die **letzten 20 Nachrichten** (User + Assistent) mitgeschickt. Nutze den Verlauf, wiederhole bereits genannte Daten nicht und ergänze **nur** fehlende Informationen für den nächsten Schritt.
 
-Dein Ziel: Schnelle Klarheit, echtes Vertrauen, konkreter nächster Schritt – kein Textberg, sondern präzise Hilfe. 🏆`;
+== GESPRÄCHSFÜHRUNG ==
+- **Ein klarer Fokus je Antwort**: Entweder Auskunft **oder** (falls Daten fehlen) **eine** konkrete, nummerierte Rückfrage — nicht drei Fragen gleichzeitig.
+- Bei datengetriebenen Abläufen: **freundlicher Lead** („Damit wir das weiterführen können…“, „Welches Modell hättest du gern…?“).
+
+Dein Ziel: Schnelle Klarheit, Vertrauen, **ein** konkreter nächster Schritt — professionell wie ein erfahrener Support-Profi — kein Textberg.
+
+== CRM / HINWEIS ZU TOOLS ==
+Wenn die Datenbank angebunden ist, wird zur Laufzeit ein **CRM-Instruktionsblock angehängt** — dort gelten zusätzliche Regeln zu Buchungen, Support, Leads und Feedback (**Vorrang** bei Tools und Datenabfrage).
+`;
+
+async function buildFullSystemPrompt() {
+  let prompt = SYSTEM_PROMPT;
+  try {
+    if (getPool()) {
+      const extra = await fetchActiveKnowledgeForPrompt();
+      if (extra) prompt += extra;
+    }
+  } catch (e) {
+    console.warn('[KB] Could not load DB knowledge:', e.message);
+  }
+  return prompt;
+}
+
+// ── Admin API ──
+app.use('/api/admin', adminRouter);
+app.use('/api/public', publicRouter);
 
 // ── Chat Endpoint ──
 app.post('/chat', async (req, res) => {
@@ -285,22 +318,24 @@ app.post('/chat', async (req, res) => {
 
     // Keep last 20 messages for context (10 exchanges)
     const recentMessages = messages.slice(-20);
+    const systemContent = await buildFullSystemPrompt();
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...recentMessages
-      ],
-      max_tokens: 500,
-      temperature: 0.7,
-      presence_penalty: 0.1,
-      frequency_penalty: 0.2,
+    const reply = await runAssistantChat(openai, {
+      baseSystemPrompt: systemContent,
+      recentMessages,
     });
 
-    const reply = completion.choices[0]?.message?.content || 'Entschuldigung, ich konnte keine Antwort generieren.';
     res.json({ reply });
 
+    if (getPool()) {
+      try {
+        const lastUser = [...recentMessages].reverse().find((m) => m.role === 'user');
+        const len = typeof lastUser?.content === 'string' ? lastUser.content.length : 0;
+        await query('INSERT INTO chat_events (user_message_chars) VALUES ($1)', [len]);
+      } catch (_) {
+        /* optional analytics */
+      }
+    }
   } catch (error) {
     console.error('OpenAI Error:', error?.message || error);
 
@@ -317,13 +352,26 @@ app.post('/chat', async (req, res) => {
 
 // ── Health Check ──
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'MisterWatch Chatbot', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'MisterWatch Chatbot',
+    database: getPool() ? 'configured' : 'off',
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// React production build (run `npm run build` in ../frontend)
+// Admin SPA build (run `npm run build` in ../admin)
+app.use('/admin', express.static(adminDist));
+app.use('/admin', (_req, res) => {
+  res.sendFile(path.join(adminDist, 'index.html'));
+});
+
+// Public React app (run `npm run build` in ../frontend)
 app.use(express.static(frontendDist));
 
-app.get('*', (req, res, next) => {
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path.startsWith('/api') || req.path.startsWith('/admin')) return next();
   res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
     if (err) next(err);
   });

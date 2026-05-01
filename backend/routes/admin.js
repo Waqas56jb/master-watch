@@ -1,0 +1,460 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { query, getPool, getDashboardStats, getChatbotTheme, setChatbotTheme, DEFAULT_CHATBOT_THEME, CHATBOT_THEME_LABELS } = require('../db');
+
+const router = express.Router();
+
+const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
+
+function jwtSign(payload) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 16) {
+    throw new Error('JWT_SECRET missing or too short (min 16 chars)');
+  }
+  return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRES });
+}
+
+function authMiddleware(req, res, next) {
+  try {
+    const h = req.headers.authorization;
+    const token = h && h.startsWith('Bearer ') ? h.slice(7) : null;
+    if (!token) return res.status(401).json({ error: 'Nicht angemeldet' });
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt' });
+    const decoded = jwt.verify(token, secret);
+    req.admin = { id: decoded.sub, email: decoded.email };
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Session ungültig oder abgelaufen' });
+  }
+}
+
+router.post('/auth/login', async (req, res) => {
+  try {
+    if (!getPool()) return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
+    }
+    const r = await query(
+      `SELECT id, email, password_hash, display_name FROM admin_users WHERE email = $1 AND is_active = TRUE`,
+      [String(email).trim().toLowerCase()]
+    );
+    const user = r.rows[0];
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
+    }
+    const token = jwtSign({ sub: user.id, email: user.email });
+    return res.json({
+      token,
+      user: { id: user.id, email: user.email, displayName: user.display_name },
+    });
+  } catch (e) {
+    console.error('admin login', e);
+    return res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+  }
+});
+
+router.get('/auth/me', authMiddleware, async (req, res) => {
+  res.json({ user: req.admin });
+});
+
+router.get('/stats', authMiddleware, async (_req, res) => {
+  try {
+    if (!getPool()) {
+      return res.json({
+        offline: true,
+        knowledgeTotal: 0,
+        knowledgeActive: 0,
+        categories: [],
+        knowledgeTimeline: [],
+        chatTimeline: [],
+        bookingsPending: 0,
+        bookingsTotal: 0,
+        inquiriesOpen: 0,
+        inquiriesResolved: 0,
+        inquiriesTotal: 0,
+        feedbackAvg: null,
+        feedbackTotal: 0,
+        submissionTimeline: [],
+      });
+    }
+    const stats = await getDashboardStats();
+    res.json({ offline: false, ...stats });
+  } catch (e) {
+    console.error('admin stats', e);
+    res.status(500).json({ error: 'Statistik nicht verfügbar' });
+  }
+});
+
+router.get('/knowledge', authMiddleware, async (_req, res) => {
+  try {
+    const r = await query(
+      `
+      SELECT id, title, slug, category, priority, is_active, created_at, updated_at,
+             LEFT(content, 200) AS excerpt
+      FROM knowledge_entries
+      ORDER BY priority DESC, updated_at DESC
+      `
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    console.error('knowledge list', e);
+    res.status(500).json({ error: 'Liste nicht ladbar' });
+  }
+});
+
+router.get('/knowledge/:id', authMiddleware, async (req, res) => {
+  try {
+    const r = await query(`SELECT * FROM knowledge_entries WHERE id = $1`, [req.params.id]);
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(row);
+  } catch (e) {
+    console.error('knowledge get', e);
+    res.status(500).json({ error: 'Nicht ladbar' });
+  }
+});
+
+router.post('/knowledge', authMiddleware, async (req, res) => {
+  try {
+    const { title, content, category = 'general', slug = null, priority = 0, is_active = true } = req.body || {};
+    if (!title || !content) return res.status(400).json({ error: 'title und content sind Pflicht' });
+    const r = await query(
+      `
+      INSERT INTO knowledge_entries (title, slug, category, content, priority, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+      `,
+      [String(title).trim(), slug ? String(slug).trim() : null, String(category).trim(), String(content).trim(), Number(priority) || 0, Boolean(is_active)]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    console.error('knowledge create', e);
+    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
+  }
+});
+
+router.put('/knowledge/:id', authMiddleware, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const cur = await query(`SELECT * FROM knowledge_entries WHERE id = $1`, [req.params.id]);
+    const row = cur.rows[0];
+    if (!row) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const title = b.title !== undefined ? String(b.title).trim() : row.title;
+    const content = b.content !== undefined ? String(b.content).trim() : row.content;
+    const category = b.category !== undefined ? String(b.category).trim() : row.category;
+    const slug = b.slug !== undefined ? (b.slug ? String(b.slug).trim() : null) : row.slug;
+    const priority = b.priority !== undefined ? Number(b.priority) || 0 : row.priority;
+    const is_active = b.is_active !== undefined ? Boolean(b.is_active) : row.is_active;
+
+    const r = await query(
+      `
+      UPDATE knowledge_entries SET
+        title = $2, slug = $3, category = $4, content = $5, priority = $6, is_active = $7, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [req.params.id, title, slug, category, content, priority, is_active]
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('knowledge update', e);
+    res.status(500).json({ error: 'Update fehlgeschlagen' });
+  }
+});
+
+router.patch('/knowledge/:id/toggle', authMiddleware, async (req, res) => {
+  try {
+    const r = await query(
+      `UPDATE knowledge_entries SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [req.params.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('knowledge toggle', e);
+    res.status(500).json({ error: 'Toggle fehlgeschlagen' });
+  }
+});
+
+router.delete('/knowledge/:id', authMiddleware, async (req, res) => {
+  try {
+    const r = await query(`DELETE FROM knowledge_entries WHERE id = $1 RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('knowledge delete', e);
+    res.status(500).json({ error: 'Löschen fehlgeschlagen' });
+  }
+});
+
+/* ── CRM: Inquiries ── */
+router.get('/inquiries', authMiddleware, async (req, res) => {
+  try {
+    const q = (req.query.q || '').toString().trim();
+    const status = (req.query.status || '').toString().trim();
+    const inquiryType = (req.query.type || '').toString().trim();
+    const params = [];
+    let where = `WHERE 1=1`;
+    if (status && ['open', 'resolved', 'archived'].includes(status)) {
+      params.push(status);
+      where += ` AND status = $${params.length}`;
+    }
+    if (inquiryType && ['general', 'support', 'lead'].includes(inquiryType)) {
+      params.push(inquiryType);
+      where += ` AND inquiry_type = $${params.length}`;
+    }
+    if (q) {
+      const base = params.length;
+      const like = `%${q}%`;
+      params.push(like, like, like, like, like);
+      where += ` AND (
+        COALESCE(subject,'') ILIKE $${base + 1} OR COALESCE(message,'') ILIKE $${base + 2} OR COALESCE(customer_name,'') ILIKE $${base + 3}
+        OR COALESCE(email,'') ILIKE $${base + 4} OR COALESCE(phone,'') ILIKE $${base + 5}
+      )`;
+    }
+    const r = await query(
+      `
+      SELECT * FROM inquiries
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT 500
+      `,
+      params
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    console.error('inquiries list', e);
+    res.status(500).json({ error: 'Liste nicht ladbar' });
+  }
+});
+
+router.patch('/inquiries/:id', authMiddleware, async (req, res) => {
+  try {
+    const { status, admin_notes } = req.body || {};
+    if (status && !['open', 'resolved', 'archived'].includes(status)) {
+      return res.status(400).json({ error: 'status ungültig' });
+    }
+    const r = await query(
+      `
+      UPDATE inquiries SET
+        status = COALESCE($2::varchar, status),
+        admin_notes = COALESCE($3::text, admin_notes),
+        updated_at = NOW()
+      WHERE id = $1::uuid
+      RETURNING *
+      `,
+      [req.params.id, status ?? null, admin_notes !== undefined ? String(admin_notes) : null]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('inquiry patch', e);
+    res.status(500).json({ error: 'Update fehlgeschlagen' });
+  }
+});
+
+/* ── CRM: Bookings ── */
+router.get('/bookings', authMiddleware, async (req, res) => {
+  try {
+    const q = (req.query.q || '').toString().trim();
+    const status = (req.query.status || '').toString().trim();
+    const params = [];
+    let where = `WHERE 1=1`;
+    if (status && ['pending', 'confirmed', 'cancelled', 'done'].includes(status)) {
+      params.push(status);
+      where += ` AND status = $${params.length}`;
+    }
+    if (q) {
+      const base = params.length;
+      const like = `%${q}%`;
+      params.push(like, like, like, like, like);
+      where += ` AND (
+        COALESCE(watch_model,'') ILIKE $${base + 1} OR COALESCE(customer_name,'') ILIKE $${base + 2}
+        OR COALESCE(email,'') ILIKE $${base + 3} OR COALESCE(phone,'') ILIKE $${base + 4} OR COALESCE(notes,'') ILIKE $${base + 5}
+      )`;
+    }
+    const r = await query(
+      `
+      SELECT * FROM booking_requests
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT 500
+      `,
+      params
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    console.error('bookings list', e);
+    res.status(500).json({ error: 'Liste nicht ladbar' });
+  }
+});
+
+router.patch('/bookings/:id', authMiddleware, async (req, res) => {
+  try {
+    const { status, notes } = req.body || {};
+    if (status && !['pending', 'confirmed', 'cancelled', 'done'].includes(status)) {
+      return res.status(400).json({ error: 'status ungültig' });
+    }
+    const r = await query(
+      `
+      UPDATE booking_requests SET
+        status = COALESCE($2::varchar, status),
+        notes = COALESCE($3::text, notes),
+        updated_at = NOW()
+      WHERE id = $1::uuid
+      RETURNING *
+      `,
+      [req.params.id, status ?? null, notes !== undefined ? String(notes) : null]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('booking patch', e);
+    res.status(500).json({ error: 'Update fehlgeschlagen' });
+  }
+});
+
+/* ── CRM: Feedback ── */
+router.get('/feedback', authMiddleware, async (req, res) => {
+  try {
+    const q = (req.query.q || '').toString().trim();
+    const rating = req.query.rating;
+    const params = [];
+    let where = `WHERE 1=1`;
+    if (rating && String(rating).match(/^[1-5]$/)) {
+      params.push(Number(rating));
+      where += ` AND rating = $${params.length}`;
+    }
+    if (q) {
+      const base = params.length;
+      const like = `%${q}%`;
+      params.push(like, like, like);
+      where += ` AND (COALESCE(comment,'') ILIKE $${base + 1} OR COALESCE(suggestion,'') ILIKE $${base + 2} OR COALESCE(email,'') ILIKE $${base + 3})`;
+    }
+    const r = await query(
+      `SELECT * FROM feedback_entries ${where} ORDER BY created_at DESC LIMIT 500`,
+      params
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    console.error('feedback list', e);
+    res.status(500).json({ error: 'Liste nicht ladbar' });
+  }
+});
+
+router.delete('/feedback/:id', authMiddleware, async (req, res) => {
+  try {
+    const r = await query(`DELETE FROM feedback_entries WHERE id = $1::uuid RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('feedback delete', e);
+    res.status(500).json({ error: 'Löschen fehlgeschlagen' });
+  }
+});
+
+/* ── CRM: Contacts (aggregated emails) ── */
+router.get('/contacts', authMiddleware, async (req, res) => {
+  try {
+    const q = (req.query.q || '').toString().trim();
+    const params = [];
+    let having = '';
+    if (q) {
+      params.push(`%${q.toLowerCase()}%`);
+      having = `HAVING lower(trim(email)) LIKE $1`;
+    }
+    const sql = `
+      SELECT lower(trim(email)) AS email,
+             COUNT(*)::int AS touchpoints,
+             MAX(last_at) AS last_seen
+      FROM (
+        SELECT email, created_at AS last_at FROM booking_requests WHERE email IS NOT NULL AND trim(email) <> ''
+        UNION ALL
+        SELECT email, created_at FROM inquiries WHERE email IS NOT NULL AND trim(email) <> ''
+        UNION ALL
+        SELECT email, created_at FROM feedback_entries WHERE email IS NOT NULL AND trim(email) <> ''
+      ) AS u(email, last_at)
+      GROUP BY 1 ${having}
+      ORDER BY touchpoints DESC, last_seen DESC
+      LIMIT 400
+    `;
+    const r = await query(sql, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    console.error('contacts', e);
+    res.status(500).json({ error: 'Kontakte nicht ladbar' });
+  }
+});
+
+/* ── Chatbot Theme (admin) ── */
+router.get('/theme', authMiddleware, async (_req, res) => {
+  try {
+    const theme = getPool() ? await getChatbotTheme() : { ...DEFAULT_CHATBOT_THEME };
+    res.json({
+      theme,
+      labels: CHATBOT_THEME_LABELS,
+      components: CHATBOT_THEME_LABELS,
+      presets: [
+        { name: 'Klassisch Dunkel · Grün', theme: { ...DEFAULT_CHATBOT_THEME } },
+        {
+          name: 'Midnight Indigo',
+          theme: {
+            ...DEFAULT_CHATBOT_THEME,
+            accent: '#818cf8',
+            userBubble: '#818cf8',
+            surface: '#0e1020',
+            card: '#14182d',
+          },
+        },
+        {
+          name: 'Mono Light',
+          theme: {
+            bg: '#f4f6fb',
+            surface: '#ffffff',
+            card: '#eef1f8',
+            border: '#dfe3ea',
+            accent: '#0f172a',
+            text: '#0f172a',
+            textDim: '#475569',
+            userBubble: '#0f172a',
+            botBubble: '#e9eef7',
+          },
+        },
+        {
+          name: 'Lux Gold',
+          theme: {
+            ...DEFAULT_CHATBOT_THEME,
+            accent: '#f59e0b',
+            userBubble: '#d97706',
+            border: '#3f3a2f',
+          },
+        },
+      ],
+    });
+  } catch (e) {
+    console.error('theme admin get', e);
+    res.status(500).json({ error: 'Theme nicht ladbar' });
+  }
+});
+
+router.put('/theme', authMiddleware, async (req, res) => {
+  try {
+    if (!getPool()) return res.status(503).json({ error: 'Datenbank erforderlich' });
+    const body = req.body?.theme || req.body || {};
+    const merged = await setChatbotTheme(body);
+    res.json({
+      theme: merged,
+      labels: CHATBOT_THEME_LABELS,
+      components: CHATBOT_THEME_LABELS,
+    });
+  } catch (e) {
+    console.error('theme admin put', e);
+    res.status(500).json({ error: 'Theme nicht gespeichert' });
+  }
+});
+
+module.exports = { router, authMiddleware };
