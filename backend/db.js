@@ -1,11 +1,14 @@
 const dns = require('dns');
 const { Pool } = require('pg');
 
-// Supabase direct host often resolves to IPv6 first; many serverless runtimes (incl. Vercel) only route IPv4 reliably.
-// Prefer A records so `db.*.supabase.co` connects without ENOTFOUND/ETIMEDOUT to the v6 address.
+// Supabase direct `db.*.supabase.co` often has **no IPv4 (A) record** — only AAAA. Forcing `ipv4first` makes
+// `dns.lookup` / pg fail with ENOTFOUND on IPv4-only stacks. Default: verbatim order (IPv6 works when offered).
+// Set DATABASE_IPV4_FIRST=true only if your DB host has A records and IPv6 causes timeouts.
 try {
-  if (process.env.DATABASE_IPV4_FIRST !== 'false') {
+  if (process.env.DATABASE_IPV4_FIRST === 'true') {
     dns.setDefaultResultOrder('ipv4first');
+  } else {
+    dns.setDefaultResultOrder('verbatim');
   }
 } catch (_) {
   /* Node < 17 or restricted env */

@@ -10,13 +10,23 @@ const { router: publicRouter } = require('./routes/publicApi');
 const { runAssistantChat } = require('./lib/chatAssistant');
 
 /** Safe hints for /health/db when Postgres ping fails (no secrets). */
-function dbPingHint(err) {
+function dbPingHint(err, dbHost) {
   const code = err && err.code;
   if (code === 'ENOTFOUND') {
+    const h = typeof dbHost === 'string' ? dbHost : '';
+    const supabaseDirect =
+      h.startsWith('db.') && h.endsWith('.supabase.co') && !h.includes('pooler');
+    if (supabaseDirect) {
+      return (
+        'Supabase direct host db.*.supabase.co is often IPv6-only (no public IPv4). Vercel/serverless frequently ' +
+        'returns ENOTFOUND for it. Fix: in Supabase Dashboard use Connect → Transaction pooler, copy the Postgres URI ' +
+        '(host like aws-0-REGION.pooler.supabase.com, port 6543, user postgres.PROJECTREF, append ?pgbouncer=true), ' +
+        'set that as DATABASE_URL on Vercel, redeploy.'
+      );
+    }
     return (
-      'DNS: hostname in DATABASE_URL does not resolve. Re-copy the URI from Supabase → Settings → Database; ' +
-      'use db.<project-ref>.supabase.co or the Transaction pooler (port 6543, ?pgbouncer=true). ' +
-      'Remove stray spaces/newlines; URL-encode special characters in the password.'
+      'DNS: hostname in DATABASE_URL does not resolve. Re-copy from Supabase. Remove stray spaces/newlines; ' +
+      'URL-encode special characters in the password. On Vercel + Supabase, use the Transaction pooler URI (port 6543).'
     );
   }
   if (code === 'ECONNREFUSED') {
@@ -428,7 +438,7 @@ app.get('/health', async (req, res) => {
         payload.database_error =
           process.env.API_DEBUG === '1' && e ? `${e.code || ''} ${e.message}`.trim() : 'set API_DEBUG=1 for detail';
         payload.database_host = getDatabaseHostFromEnv();
-        payload.database_hint = dbPingHint(e);
+        payload.database_hint = dbPingHint(e, payload.database_host);
       }
     }
   }
@@ -456,7 +466,7 @@ app.get('/health/db', async (req, res) => {
     payload.database_error =
       process.env.API_DEBUG === '1' && e ? `${e.code || ''} ${e.message}`.trim() : 'set API_DEBUG=1 for detail';
     payload.database_host = getDatabaseHostFromEnv();
-    payload.database_hint = dbPingHint(e);
+    payload.database_hint = dbPingHint(e, payload.database_host);
   }
   res.json(payload);
 });

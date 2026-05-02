@@ -1,27 +1,18 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getJwtSecret, JWT_EXPIRES_DEFAULT } = require('../lib/jwtSecret');
 const { query, getPool, getDashboardStats, getChatbotTheme, setChatbotTheme, DEFAULT_CHATBOT_THEME, CHATBOT_THEME_LABELS } = require('../db');
 
 const router = express.Router();
 
-const JWT_EXPIRES_DEFAULT = '7d';
-
-/** Invalid JWT_EXPIRES (e.g. on Vercel) makes jsonwebtoken throw after a successful password check → opaque 500. */
+/** Admin session JWT (7d). Signing key: `JWT_SECRET` if set, else SHA-256 of `SUPABASE_SERVICE_ROLE_KEY`. */
 function jwtSign(payload) {
-  const secret = process.env.JWT_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error('JWT_SECRET missing or too short (min 16 chars)');
+  const secret = getJwtSecret();
+  if (!secret) {
+    throw new Error('JWT: set JWT_SECRET (≥16 chars) or SUPABASE_SERVICE_ROLE_KEY');
   }
-  const expiresIn = (process.env.JWT_EXPIRES || JWT_EXPIRES_DEFAULT).trim() || JWT_EXPIRES_DEFAULT;
-  try {
-    return jwt.sign(payload, secret, { expiresIn });
-  } catch (e) {
-    if (/expiresIn/i.test(String(e && e.message))) {
-      return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRES_DEFAULT });
-    }
-    throw e;
-  }
+  return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRES_DEFAULT });
 }
 
 /** Pg / Node network errors may be on `err`, `err.cause`, or `AggregateError.errors[]`. */
@@ -83,8 +74,10 @@ function authMiddleware(req, res, next) {
     const h = req.headers.authorization;
     const token = h && h.startsWith('Bearer ') ? h.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Nicht angemeldet' });
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt' });
+    const secret = getJwtSecret();
+    if (!secret) {
+      return res.status(500).json({ error: 'Server-Konfiguration: SUPABASE_SERVICE_ROLE_KEY oder JWT_SECRET setzen' });
+    }
     const decoded = jwt.verify(token, secret);
     req.admin = { id: decoded.sub, email: decoded.email };
     next();
@@ -96,9 +89,10 @@ function authMiddleware(req, res, next) {
 router.post('/auth/login', async (req, res) => {
   try {
     if (!getPool()) return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
-    const secret = process.env.JWT_SECRET;
-    if (!secret || secret.length < 16) {
-      return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt oder ist zu kurz (min. 16 Zeichen)' });
+    if (!getJwtSecret()) {
+      return res.status(500).json({
+        error: 'Server-Konfiguration: SUPABASE_SERVICE_ROLE_KEY (für Admin-Token) oder JWT_SECRET setzen',
+      });
     }
     const { email, password } = req.body || {};
     if (!email || !password) {
@@ -191,9 +185,9 @@ router.post('/auth/verify-reset-email', async (req, res) => {
     if (!r.rows[0]) {
       return res.status(404).json({ error: 'Kein Admin-Konto mit dieser E-Mail.' });
     }
-    const secret = process.env.JWT_SECRET;
-    if (!secret || secret.length < 16) {
-      return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt' });
+    const secret = getJwtSecret();
+    if (!secret) {
+      return res.status(500).json({ error: 'Server-Konfiguration: SUPABASE_SERVICE_ROLE_KEY oder JWT_SECRET setzen' });
     }
     const resetToken = jwt.sign({ email: em, typ: 'admin_pwreset' }, secret, { expiresIn: '15m' });
     return res.json({ ok: true, email: em, resetToken });
@@ -216,8 +210,10 @@ router.post('/auth/reset-password', async (req, res) => {
     if (String(newPassword).length < 8) {
       return res.status(400).json({ error: 'Neues Passwort: mindestens 8 Zeichen' });
     }
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt' });
+    const secret = getJwtSecret();
+    if (!secret) {
+      return res.status(500).json({ error: 'Server-Konfiguration: SUPABASE_SERVICE_ROLE_KEY oder JWT_SECRET setzen' });
+    }
     let payload;
     try {
       payload = jwt.verify(String(resetToken), secret);
@@ -500,6 +496,25 @@ router.patch('/bookings/:id', authMiddleware, async (req, res) => {
   } catch (e) {
     console.error('booking patch', e);
     res.status(500).json({ error: 'Update fehlgeschlagen' });
+  }
+});
+
+/* ── CRM: Chat widget usage (chat_events — one row per /chat user message batch) ── */
+router.get('/chat-events', authMiddleware, async (req, res) => {
+  try {
+    if (!getPool()) return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
+    const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
+    const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
+    const c = await query(`SELECT COUNT(*)::int AS n FROM chat_events`);
+    const total = c.rows[0]?.n ?? 0;
+    const r = await query(
+      `SELECT id, occurred_at, user_message_chars FROM chat_events ORDER BY occurred_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    res.json({ items: r.rows, total, limit, offset });
+  } catch (e) {
+    console.error('chat-events', e);
+    res.status(500).json({ error: 'Chat-Aktivität nicht ladbar' });
   }
 });
 

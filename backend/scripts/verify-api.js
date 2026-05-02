@@ -113,7 +113,11 @@ async function main() {
   console.log(lines.join('\n'));
   if (failed) {
     console.log(
-      `\nHint: If login is not 401/200, open GET ${base}/health/db (Postgres ping). Use the SAME DATABASE_URL as Vercel (trim pasted value — no trailing newline).\n  cd backend && npm run check-schema\n  cd backend && npm run verify-admin you@email pass\n  Full admin smoke: set ADMIN_TEST_EMAIL + ADMIN_TEST_PASSWORD then re-run this script.`
+      `\nHint: If login is not 401/200, open GET ${base}/health/db (read database_error_code and database_hint).\n` +
+        `Supabase direct db.*.supabase.co is often IPv6-only — on Vercel use the Transaction pooler DATABASE_URL (port 6543, ?pgbouncer=true) from Supabase → Connect.\n` +
+        `  cd backend; npm run check-schema\n` +
+        `  cd backend; npm run verify-admin you@email pass\n` +
+        `Full admin smoke: set ADMIN_TEST_EMAIL + ADMIN_TEST_PASSWORD then re-run this script.`
     );
   }
   process.exit(failed ? 1 : 0);
