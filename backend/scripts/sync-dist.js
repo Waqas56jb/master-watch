@@ -1,7 +1,8 @@
 /**
- * Copies Vite builds into repo-root `public/` for:
- * - Vercel CDN (Express on Vercel does not serve express.static; see vercel.json rewrites).
- * - Local `npm start`: server resolves sibling dist folders or `public/` (see server.js).
+ * Copies Vite builds into `backend/public/` so:
+ * - Vercel (Root Directory = `backend`) serves them from the CDN (`public/**` is next to package.json).
+ *   express.static() is ignored on Vercel — static files must live here.
+ * - Local `npm start`: server uses `backend/public` in production or sibling `dist` folders (see server.js).
  */
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +11,7 @@ const backendRoot = path.join(__dirname, '..');
 const repoRoot = path.join(backendRoot, '..');
 const adminSrc = path.join(repoRoot, 'admin', 'dist');
 const frontendSrc = path.join(repoRoot, 'frontend', 'dist');
-const publicRoot = path.join(repoRoot, 'public');
+const publicRoot = path.join(backendRoot, 'public');
 const adminDst = path.join(publicRoot, 'admin');
 
 function requireBuild(from, label) {

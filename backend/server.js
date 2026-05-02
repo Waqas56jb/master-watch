@@ -47,9 +47,8 @@ app.use(express.json({ limit: '1mb' }));
 const backendRoot = fs.existsSync(path.join(__dirname, 'package.json'))
   ? __dirname
   : process.cwd();
-const repoRoot = path.join(backendRoot, '..');
 
-/** Prefer sibling dist in development; prefer repo-root `public/` after sync-dist for production deploys. */
+/** Prefer sibling dist locally; prefer `backend/public/` after sync-dist (required paths for Vercel CDN + sendFile fallbacks). */
 function resolvedDist(siblingPath, bundledPath) {
   const siblingIdx = path.join(siblingPath, 'index.html');
   const bundledIdx = path.join(bundledPath, 'index.html');
@@ -63,8 +62,8 @@ function resolvedDist(siblingPath, bundledPath) {
 
 const siblingFrontend = path.join(backendRoot, '..', 'frontend', 'dist');
 const siblingAdmin = path.join(backendRoot, '..', 'admin', 'dist');
-const bundledFrontend = path.join(repoRoot, 'public');
-const bundledAdmin = path.join(repoRoot, 'public', 'admin');
+const bundledFrontend = path.join(backendRoot, 'public');
+const bundledAdmin = path.join(backendRoot, 'public', 'admin');
 const frontendDist = resolvedDist(siblingFrontend, bundledFrontend);
 const adminDist = resolvedDist(siblingAdmin, bundledAdmin);
 
@@ -383,13 +382,13 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Admin SPA build (run `npm run build` in ../admin)
+// Admin SPA — on Vercel, CDN serves `public/admin/**`; keep static + fallback for local dev and client-side routes that miss the CDN.
 app.use('/admin', express.static(adminDist));
 app.use('/admin', (_req, res) => {
   res.sendFile(path.join(adminDist, 'index.html'));
 });
 
-// Public React app (run `npm run build` in ../frontend)
+// Public React app — on Vercel, CDN serves `public/**` from `backend/public`; static middleware is for local dev.
 app.use(express.static(frontendDist));
 
 app.use((req, res, next) => {

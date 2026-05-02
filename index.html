@@ -84,7 +84,7 @@
         <strong>Root Directory: <code>backend</code></strong>
         <span class="muted">Express API + chatbot static bundle (requires build step).</span>
         <ul>
-          <li>Build sets <code>VITE_ADMIN_BASE=/admin/</code> for the admin bundle so <code>/admin</code> paths match the synced <code>public/admin</code> copy.</li>
+          <li>Build copies SPAs into <code>backend/public/</code> (Vercel serves this folder from the CDN). Set <code>VITE_ADMIN_BASE=/admin/</code> for the admin bundle.</li>
           <li>Add env vars under Vercel → Settings → Environment Variables (mirror <code>backend/.env.example</code> — never commit <code>.env</code>).</li>
         </ul>
       </div>

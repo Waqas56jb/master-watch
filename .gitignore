@@ -9,5 +9,6 @@ frontend/dist/
 admin/node_modules/
 admin/dist/
 
-# sync-dist copies built SPAs here for hosting (Vercel public/ + SPA fallbacks via Express).
+# Legacy: sync-dist used repo-root public/; Vercel now uses backend/public/ (see backend/scripts/sync-dist.js).
 public/
+backend/public/
