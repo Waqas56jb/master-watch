@@ -15,22 +15,11 @@ const PORT = process.env.PORT || 3000;
 // ── OpenAI Client ──
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ── CORS (separate frontend on Vercel / other hosts) ──
-// ALLOWED_ORIGINS=comma-separated list, e.g. https://my-app.vercel.app,https://www.example.com
-// If unset, reflect the request Origin (works for any frontend calling this API).
-function buildCorsOrigin() {
-  const raw = process.env.ALLOWED_ORIGINS;
-  if (raw && raw.trim()) {
-    return raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return true;
-}
-
+// ── CORS: allow browser calls from any origin (admin/chatbot on other hosts).
+// Uses dynamic reflection (origin: true) — works with Authorization header without credentials: 'include'.
+// To restrict later, replace with a function or whitelist in env (not applied by default).
 const corsOptions = {
-  origin: buildCorsOrigin(),
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: [],
