@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
 
-const PRODUCTION_API_BASE = 'https://master-watch-fwr2.vercel.app';
+const PRODUCTION_API_BASE = 'https://master-watch-1zeu.vercel.app';
 const envBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const API_ROOT = envBase || (import.meta.env.PROD ? PRODUCTION_API_BASE : '');
 const API_URL = API_ROOT ? `${API_ROOT}/chat` : '/chat';
