@@ -7,6 +7,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed-admin": "node scripts/seed-admin.js",
+    "verify-admin": "node scripts/verify-admin-login.js",
     "db:apply": "node scripts/apply-schema.js",
     "sync-dist": "node scripts/sync-dist.js"
   },

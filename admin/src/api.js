@@ -1,8 +1,21 @@
-const base = () => (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
+/** Empty string → same-origin `/api/...` (Vercel rewrite → real backend in admin/vercel.json). */
+function apiBase() {
+  let b = String(import.meta.env.VITE_API_BASE || '').trim().replace(/\/$/, '');
+  if (typeof window !== 'undefined' && b) {
+    try {
+      if (new URL(b).origin === window.location.origin) {
+        b = '';
+      }
+    } catch {
+      /* ignore bad VITE_API_BASE */
+    }
+  }
+  return b;
+}
 
 export function apiUrl(path) {
   const p = path.startsWith('/') ? path : `/${path}`;
-  return `${base()}${p}`;
+  return `${apiBase()}${p}`;
 }
 
 export async function apiFetch(path, options = {}) {
