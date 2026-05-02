@@ -2,11 +2,18 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
- * - Standalone admin on Vercel: set VITE_ADMIN_BASE=/ (see admin/vercel.json build.env).
- * - Bundled under the Node app at /admin: set VITE_ADMIN_BASE=/admin/ (backend/vercel.json build).
- * - Local dev behind Express on /admin: omit → defaults to /admin/.
+ * - Standalone admin on Vercel (Root Directory = admin): base must be /. Vercel sets VERCEL=1 at build;
+ *   otherwise defaulting to /admin/ breaks asset URLs (browser requests /admin/assets/* but files are at /assets/*).
+ * - Bundled under backend at /admin: set VITE_ADMIN_BASE=/admin/ in that project’s build (see backend/vercel.json).
+ * - Local dev behind Express on /admin: omit VERCEL and VITE_ADMIN_BASE → /admin/.
  */
 function adminBase() {
+  // On Vercel: default to site root. Only use /admin/ when backend monolith build sets VITE_ADMIN_BASE (see backend vercel build).
+  if (process.env.VERCEL) {
+    const v = (process.env.VITE_ADMIN_BASE || '').trim().replace(/\/$/, '');
+    if (v === '/admin' || v === 'admin') return '/admin/';
+    return '/';
+  }
   const raw = process.env.VITE_ADMIN_BASE;
   if (raw === '/') return '/';
   if (raw != null && String(raw).trim() !== '') {
