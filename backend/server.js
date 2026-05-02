@@ -427,6 +427,7 @@ app.get('/health/db', async (req, res) => {
     payload.database_ping = 'ok';
   } catch (e) {
     payload.database_ping = 'error';
+    if (e && e.code) payload.database_error_code = String(e.code);
     payload.database_error =
       process.env.API_DEBUG === '1' && e ? `${e.code || ''} ${e.message}`.trim() : 'set API_DEBUG=1 for detail';
   }

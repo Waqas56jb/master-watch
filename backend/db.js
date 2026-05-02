@@ -1,4 +1,15 @@
+const dns = require('dns');
 const { Pool } = require('pg');
+
+// Supabase direct host often resolves to IPv6 first; many serverless runtimes (incl. Vercel) only route IPv4 reliably.
+// Prefer A records so `db.*.supabase.co` connects without ENOTFOUND/ETIMEDOUT to the v6 address.
+try {
+  if (process.env.DATABASE_IPV4_FIRST !== 'false') {
+    dns.setDefaultResultOrder('ipv4first');
+  }
+} catch (_) {
+  /* Node < 17 or restricted env */
+}
 
 let pool = null;
 
