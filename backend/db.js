@@ -13,9 +13,36 @@ try {
 
 let pool = null;
 
+/**
+ * Vercel / dashboard pastes often add BOM, zero-width chars, or newlines inside DATABASE_URL,
+ * which breaks DNS (ENOTFOUND) even though the variable is "set".
+ */
+function normalizeDatabaseUrl(raw) {
+  if (typeof raw !== 'string') return '';
+  let s = raw.trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  s = s.replace(/[\uFEFF\u200B-\u200D\u202A-\u202E]/g, '');
+  s = s.replace(/\r|\n/g, '');
+  return s.trim();
+}
+
+/** Host only (for /health/db); never includes password. Returns null if URL cannot be parsed. */
+function getDatabaseHostFromEnv() {
+  const s = normalizeDatabaseUrl(process.env.DATABASE_URL || '');
+  if (!s) return null;
+  try {
+    const u = new URL(s.replace(/^postgres:\/\//i, 'postgresql://'));
+    return u.hostname || null;
+  } catch {
+    return null;
+  }
+}
+
 function getPool() {
   const raw = process.env.DATABASE_URL;
-  const connectionString = typeof raw === 'string' ? raw.trim() : raw;
+  const connectionString = typeof raw === 'string' ? normalizeDatabaseUrl(raw) : '';
   if (!connectionString) return null;
   if (!pool) {
     const isProdSsl =
@@ -253,6 +280,7 @@ async function insertFeedback(opts) {
 
 module.exports = {
   getPool,
+  getDatabaseHostFromEnv,
   query,
   fetchActiveKnowledgeForPrompt,
   getDashboardStats,

@@ -4,10 +4,32 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const OpenAI = require('openai');
-const { fetchActiveKnowledgeForPrompt, query, getPool } = require('./db');
+const { fetchActiveKnowledgeForPrompt, query, getPool, getDatabaseHostFromEnv } = require('./db');
 const { router: adminRouter } = require('./routes/admin');
 const { router: publicRouter } = require('./routes/publicApi');
 const { runAssistantChat } = require('./lib/chatAssistant');
+
+/** Safe hints for /health/db when Postgres ping fails (no secrets). */
+function dbPingHint(err) {
+  const code = err && err.code;
+  if (code === 'ENOTFOUND') {
+    return (
+      'DNS: hostname in DATABASE_URL does not resolve. Re-copy the URI from Supabase → Settings → Database; ' +
+      'use db.<project-ref>.supabase.co or the Transaction pooler (port 6543, ?pgbouncer=true). ' +
+      'Remove stray spaces/newlines; URL-encode special characters in the password.'
+    );
+  }
+  if (code === 'ECONNREFUSED') {
+    return 'Connection refused (wrong port or host). Direct DB is often :5432; pooler uses :6543 with ?pgbouncer=true.';
+  }
+  if (code === 'ETIMEDOUT') {
+    return 'Timed out reaching the database (network, region, or paused Supabase project).';
+  }
+  if (code === '28P01') {
+    return 'Database rejected user/password (check DATABASE_URL credentials and URL-encoding of the password).';
+  }
+  return null;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -402,8 +424,11 @@ app.get('/health', async (req, res) => {
         payload.database_ping = 'ok';
       } catch (e) {
         payload.database_ping = 'error';
+        if (e && e.code) payload.database_error_code = String(e.code);
         payload.database_error =
           process.env.API_DEBUG === '1' && e ? `${e.code || ''} ${e.message}`.trim() : 'set API_DEBUG=1 for detail';
+        payload.database_host = getDatabaseHostFromEnv();
+        payload.database_hint = dbPingHint(e);
       }
     }
   }
@@ -430,6 +455,8 @@ app.get('/health/db', async (req, res) => {
     if (e && e.code) payload.database_error_code = String(e.code);
     payload.database_error =
       process.env.API_DEBUG === '1' && e ? `${e.code || ''} ${e.message}`.trim() : 'set API_DEBUG=1 for detail';
+    payload.database_host = getDatabaseHostFromEnv();
+    payload.database_hint = dbPingHint(e);
   }
   res.json(payload);
 });
