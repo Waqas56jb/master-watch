@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS admin_users (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+COMMENT ON TABLE admin_users IS 'Administrator accounts for the dashboard; password_hash is bcrypt (cost 12 from seed).';
+COMMENT ON COLUMN admin_users.email IS 'Login identifier, stored lowercase; unique.';
+COMMENT ON COLUMN admin_users.password_hash IS 'bcrypt hash; never store plaintext passwords.';
+COMMENT ON COLUMN admin_users.is_active IS 'If false, login is denied.';
+
 CREATE TABLE IF NOT EXISTS knowledge_entries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title VARCHAR(512) NOT NULL,
@@ -118,3 +123,20 @@ INSERT INTO chatbot_theme (id, theme) VALUES (
     "botBubble": "#1e1e1e"
   }'::jsonb
 ) ON CONFLICT (id) DO NOTHING;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- Manual admin user (Supabase / psql): login checks password_hash with bcrypt.
+-- Requires pgcrypto (created above). Use lowercase email. Never paste production
+-- passwords into shared chat logs — run this only in your own SQL editor.
+--
+-- INSERT INTO admin_users (email, password_hash, display_name)
+-- VALUES (
+--   lower(trim('you@example.com')),
+--   crypt('YourPasswordHereMin8Chars', gen_salt('bf', 12)),
+--   'Admin'
+-- )
+-- ON CONFLICT (email) DO UPDATE SET
+--   password_hash = EXCLUDED.password_hash,
+--   is_active = TRUE,
+--   updated_at = NOW();
+

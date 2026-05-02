@@ -9,6 +9,8 @@ import Bookings from './pages/Bookings.jsx';
 import CustomerFeedback from './pages/CustomerFeedback.jsx';
 import Contacts from './pages/Contacts.jsx';
 import ChatbotAppearance from './pages/ChatbotAppearance.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
+import Account from './pages/Account.jsx';
 
 function Protected() {
   const { isAuthed } = useAuth();
@@ -24,6 +26,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<Protected />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
@@ -33,6 +36,7 @@ export default function App() {
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/knowledge" element={<Knowledge />} />
         <Route path="/chat-appearance" element={<ChatbotAppearance />} />
+        <Route path="/account" element={<Account />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

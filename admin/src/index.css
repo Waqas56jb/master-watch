@@ -382,6 +382,15 @@ code {
   background: rgba(250, 204, 21, 0.08);
 }
 
+.banner-success {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  background: rgba(74, 222, 128, 0.1);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
 .btn-primary,
 .btn-secondary,
 .btn-danger,
@@ -491,6 +500,44 @@ code {
   outline: none;
 }
 
+.field-password {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.field-password input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.field-password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.field-password-toggle:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.reset-back-btn {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .field input:focus,
 .field textarea:focus {
   border-color: rgba(34, 211, 238, 0.45);
@@ -505,6 +552,39 @@ code {
 .login-hint {
   font-size: 12px;
   line-height: 1.5;
+}
+
+.login-links {
+  margin: 0;
+  text-align: center;
+}
+
+.login-links a {
+  color: var(--accent);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.login-links a:hover {
+  text-decoration: underline;
+}
+
+.account-card {
+  max-width: 480px;
+  padding: 20px 22px;
+  margin-top: 8px;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.account-form .btn-primary {
+  align-self: flex-start;
+  margin-top: 6px;
 }
 
 .kb-grid {

@@ -1,23 +1,14 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext.jsx';
 import { apiFetch } from '../api.js';
-
-/**
- * Default login fields only (convenience). Auth is enforced by the API + DB password hash.
- * If login fails with 401 after deploying or changing password, run in `backend/`:
- *   ADMIN_EMAIL=wasifjaved@gmail.com ADMIN_PASSWORD='wasifjaved@123!' node scripts/seed-admin.js
- */
-const BUILTIN_ADMIN = {
-  email: 'wasifjaved@gmail.com',
-  password: 'wasifjaved@123!',
-};
+import PasswordField from '../components/PasswordField.jsx';
 
 export default function Login() {
   const { setToken, isAuthed } = useAuth();
   const nav = useNavigate();
-  const [email, setEmail] = useState(BUILTIN_ADMIN.email);
-  const [password, setPassword] = useState(BUILTIN_ADMIN.password);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -36,10 +27,9 @@ export default function Login() {
       nav('/dashboard');
     } catch (e2) {
       const apiMsg = e2?.data?.error || e2.message || 'Login fehlgeschlagen';
-      // 401: API DB often differs from local — seed admin on the same Postgres Vercel uses (DATABASE_URL).
       const hint =
         e2?.status === 401
-          ? ' — Für Vercel: Im Supabase (gleiches Projekt wie DATABASE_URL im Backend) den Admin anlegen/aktualisieren (lokal `backend`: DATABASE_URL aus Vercel setzen, dann `node scripts/seed-admin.js`).'
+          ? ' — Prüfen Sie E-Mail/Passwort und ob der Benutzer in der DB existiert (backend: npm run seed-admin).'
           : '';
       setErr(apiMsg + hint);
     } finally {
@@ -70,19 +60,19 @@ export default function Login() {
             required
           />
         </label>
-        <label className="field">
-          <span>Passwort</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
+        <PasswordField
+          label="Passwort"
+          id="login-password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? 'Anmelden…' : 'Anmelden'}
         </button>
+        <p className="login-links">
+          <Link to="/reset-password">Passwort vergessen?</Link>
+        </p>
         <p className="login-hint muted">
           Standard-Prompt bleibt im Backend; DB-Einträge werden nur ergänzend an den Chatbot angehängt.
         </p>

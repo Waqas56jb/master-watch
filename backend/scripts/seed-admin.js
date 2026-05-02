@@ -1,7 +1,8 @@
 /**
- * One-time: create admin user from env.
+ * One-time CLI bootstrap: insert/update admin_users from env.
+ * Not used by the API or login at runtime — only this script reads ADMIN_EMAIL / ADMIN_PASSWORD.
  * Usage (from backend folder):
- *   ADMIN_EMAIL=you@mail.com ADMIN_PASSWORD=yourpassword node scripts/seed-admin.js
+ *   ADMIN_EMAIL=you@mail.com ADMIN_PASSWORD='secret' node scripts/seed-admin.js
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const bcrypt = require('bcryptjs');

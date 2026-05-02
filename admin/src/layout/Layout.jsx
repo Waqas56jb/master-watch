@@ -6,6 +6,7 @@ import {
   Palette,
   Sparkles,
   Users,
+  UserCircle,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -20,6 +21,7 @@ const links = [
   { to: '/contacts', label: 'Kontakte', Icon: Users },
   { to: '/knowledge', label: 'Knowledge Base', Icon: BookOpen },
   { to: '/chat-appearance', label: 'Chat Farben', Icon: Palette },
+  { to: '/account', label: 'Konto', Icon: UserCircle },
 ];
 
 export default function Layout({ children }) {

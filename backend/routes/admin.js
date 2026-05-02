@@ -60,6 +60,105 @@ router.get('/auth/me', authMiddleware, async (req, res) => {
   res.json({ user: req.admin });
 });
 
+/** Logged-in: change password (know current password). */
+router.put('/auth/password', authMiddleware, async (req, res) => {
+  try {
+    if (!getPool()) return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Aktuelles und neues Passwort erforderlich' });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Neues Passwort: mindestens 8 Zeichen' });
+    }
+    const r = await query(
+      `SELECT password_hash FROM admin_users WHERE id = $1::uuid AND is_active = TRUE`,
+      [req.admin.id]
+    );
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+    if (!(await bcrypt.compare(String(currentPassword), row.password_hash))) {
+      return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
+    }
+    const hash = await bcrypt.hash(String(newPassword), 12);
+    await query(`UPDATE admin_users SET password_hash = $2, updated_at = NOW() WHERE id = $1::uuid`, [
+      req.admin.id,
+      hash,
+    ]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('admin password change', e);
+    res.status(500).json({ error: 'Passwort konnte nicht geändert werden' });
+  }
+});
+
+/** Step 1 of reset: confirm active admin email exists; return short-lived token for step 2. */
+router.post('/auth/verify-reset-email', async (req, res) => {
+  try {
+    if (!getPool()) return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
+    const { email } = req.body || {};
+    if (!email || !String(email).trim()) {
+      return res.status(400).json({ error: 'E-Mail erforderlich' });
+    }
+    const em = String(email).trim().toLowerCase();
+    const r = await query(`SELECT id FROM admin_users WHERE email = $1 AND is_active = TRUE`, [em]);
+    if (!r.rows[0]) {
+      return res.status(404).json({ error: 'Kein Admin-Konto mit dieser E-Mail.' });
+    }
+    const secret = process.env.JWT_SECRET;
+    if (!secret || secret.length < 16) {
+      return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt' });
+    }
+    const resetToken = jwt.sign({ email: em, typ: 'admin_pwreset' }, secret, { expiresIn: '15m' });
+    return res.json({ ok: true, email: em, resetToken });
+  } catch (e) {
+    console.error('admin verify-reset-email', e);
+    res.status(500).json({ error: 'E-Mail konnte nicht geprüft werden' });
+  }
+});
+
+/**
+ * Step 2 of reset: new password; requires resetToken from verify-reset-email (same email, ≤15 min).
+ */
+router.post('/auth/reset-password', async (req, res) => {
+  try {
+    if (!getPool()) return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
+    const { email, newPassword, resetToken } = req.body || {};
+    if (!email || !newPassword || !resetToken) {
+      return res.status(400).json({ error: 'E-Mail, neues Passwort und Bestätigungstoken erforderlich' });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Neues Passwort: mindestens 8 Zeichen' });
+    }
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt' });
+    let payload;
+    try {
+      payload = jwt.verify(String(resetToken), secret);
+    } catch {
+      return res.status(401).json({
+        error: 'Bestätigung abgelaufen oder ungültig. Bitte erneut mit Ihrer E-Mail beginnen.',
+      });
+    }
+    const em = String(email).trim().toLowerCase();
+    if (payload.typ !== 'admin_pwreset' || String(payload.email).toLowerCase() !== em) {
+      return res.status(401).json({ error: 'Ungültiger Reset-Vorgang.' });
+    }
+    const hash = await bcrypt.hash(String(newPassword), 12);
+    const up = await query(
+      `UPDATE admin_users SET password_hash = $2, updated_at = NOW() WHERE email = $1 AND is_active = TRUE RETURNING id`,
+      [em, hash]
+    );
+    if (!up.rows[0]) {
+      return res.status(404).json({ error: 'Kein aktiver Benutzer mit dieser E-Mail' });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('admin reset password', e);
+    res.status(500).json({ error: 'Passwort-Reset fehlgeschlagen' });
+  }
+});
+
 router.get('/stats', authMiddleware, async (_req, res) => {
   try {
     if (!getPool()) {
