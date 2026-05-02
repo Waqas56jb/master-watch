@@ -4,12 +4,13 @@ import { useAuth } from '../AuthContext.jsx';
 import { apiFetch } from '../api.js';
 
 /**
- * Built-in admin login (no .env on the client). These strings ship in the JS bundle — anyone can read them.
- * The API still checks the real user + hash in the database; run `npm run seed-admin` in backend if login fails.
+ * Default login fields only (convenience). Auth is enforced by the API + DB password hash.
+ * If login fails with 401 after deploying or changing password, run in `backend/`:
+ *   ADMIN_EMAIL=wasifjaved@gmail.com ADMIN_PASSWORD='wasifjaved@123!' node scripts/seed-admin.js
  */
 const BUILTIN_ADMIN = {
   email: 'wasifjaved@gmail.com',
-  password: 'wasif@123!',
+  password: 'wasifjaved@123!',
 };
 
 export default function Login() {
@@ -25,17 +26,11 @@ export default function Login() {
   async function submit(e) {
     e.preventDefault();
     setErr('');
-    const em = email.trim().toLowerCase();
-    const pw = password;
-    if (em !== BUILTIN_ADMIN.email.toLowerCase() || pw !== BUILTIN_ADMIN.password) {
-      setErr('Ungültige Zugangsdaten');
-      return;
-    }
     setLoading(true);
     try {
       const data = await apiFetch('/api/admin/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email: em, password: pw }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
       setToken(data.token, data.user?.email || email.trim());
       nav('/dashboard');
