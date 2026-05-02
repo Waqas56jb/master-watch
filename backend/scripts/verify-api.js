@@ -3,7 +3,7 @@
  *
  * Usage:
  *   node scripts/verify-api.js
- *   node scripts/verify-api.js https://master-watch-1zeu.vercel.app
+ *   node scripts/verify-api.js https://master-watch-yv9c.vercel.app
  *
  * Optional login + protected routes (recommended):
  *   set ADMIN_TEST_EMAIL   set ADMIN_TEST_PASSWORD
