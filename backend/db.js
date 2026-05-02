@@ -5,16 +5,16 @@ let pool = null;
 function getPool() {
   if (!process.env.DATABASE_URL) return null;
   if (!pool) {
+    const isProdSsl =
+      process.env.NODE_ENV === 'production' || process.env.DATABASE_SSL !== 'false';
+    const onVercel = Boolean(process.env.VERCEL);
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl:
-        process.env.NODE_ENV === 'production' ||
-        process.env.DATABASE_SSL !== 'false'
-          ? { rejectUnauthorized: false }
-          : false,
-      max: 10,
-      idleTimeoutMillis: 30000,
+      ssl: isProdSsl ? { rejectUnauthorized: false } : false,
+      max: onVercel ? 1 : 10,
+      idleTimeoutMillis: onVercel ? 10_000 : 30_000,
       connectionTimeoutMillis: 8000,
+      ...(onVercel ? { prepareThreshold: 0 } : {}),
     });
   }
   return pool;

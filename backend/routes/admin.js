@@ -33,6 +33,10 @@ function authMiddleware(req, res, next) {
 router.post('/auth/login', async (req, res) => {
   try {
     if (!getPool()) return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
+    const secret = process.env.JWT_SECRET;
+    if (!secret || secret.length < 16) {
+      return res.status(500).json({ error: 'Server-Konfiguration: JWT_SECRET fehlt oder ist zu kurz (min. 16 Zeichen)' });
+    }
     const { email, password } = req.body || {};
     if (!email || !password) {
       return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
@@ -42,7 +46,15 @@ router.post('/auth/login', async (req, res) => {
       [String(email).trim().toLowerCase()]
     );
     const user = r.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    let passwordOk = false;
+    if (user?.password_hash) {
+      try {
+        passwordOk = await bcrypt.compare(String(password), user.password_hash);
+      } catch {
+        passwordOk = false;
+      }
+    }
+    if (!passwordOk) {
       return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
     }
     const token = jwtSign({ sub: user.id, email: user.email });
