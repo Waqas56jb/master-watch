@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MisterWatch — Deploy hub</title>
+    <meta name="color-scheme" content="dark light" />
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        line-height: 1.55;
+        --bg: #0c1018;
+        --card: #141a26;
+        --text: #e8eaf0;
+        --muted: #8b939e;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+      }
+      main {
+        max-width: 40rem;
+        margin: auto;
+        padding: 2rem 1.25rem 3rem;
+      }
+      h1 {
+        font-size: 1.35rem;
+        font-weight: 600;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 10px;
+        padding: 1rem 1.15rem;
+        margin-bottom: 1rem;
+        border: 1px solid #252e3f;
+      }
+      .card strong {
+        display: block;
+        margin-bottom: 0.35rem;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      code {
+        font-size: 0.82rem;
+        background: #0f131c;
+        padding: 0.12em 0.35em;
+        border-radius: 4px;
+      }
+      ul {
+        margin: 0.5rem 0 0 1rem;
+      }
+      li {
+        margin: 0.25rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>MisterWatch monorepo</h1>
+      <p class="muted">
+        Deploy each part from the same repo by choosing a different <strong>Root Directory</strong> per Vercel project.
+      </p>
+
+      <div class="card">
+        <strong>Root Directory: <code>(leave empty)</code> — repo root</strong>
+        <span class="muted">This page is deployed as static HTML (<code>/index.html</code>).</span>
+      </div>
+
+      <div class="card">
+        <strong>Root Directory: <code>admin</code></strong>
+        <span class="muted">Admin SPA at <code>/</code> (standalone). API calls go to <code>VITE_API_BASE</code> (set in Vercel → Environment Variables).</span>
+        <ul>
+          <li><code>admin/vercel.json</code> sets <code>VITE_ADMIN_BASE=/</code> at build time so asset URLs work at the site root.</li>
+          <li>Set <code>VITE_API_BASE</code> to your backend origin, e.g. <code>https://your-api.vercel.app</code> (no trailing slash).</li>
+          <li>Set <code>ALLOWED_ORIGINS</code> on the backend to include your admin URL.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <strong>Root Directory: <code>backend</code></strong>
+        <span class="muted">Express API + chatbot static bundle (requires build step).</span>
+        <ul>
+          <li>Build sets <code>VITE_ADMIN_BASE=/admin/</code> for the admin bundle so <code>/admin</code> paths match the synced <code>public/admin</code> copy.</li>
+          <li>Add env vars under Vercel → Settings → Environment Variables (mirror <code>backend/.env.example</code> — never commit <code>.env</code>).</li>
+        </ul>
+      </div>
+    </main>
+  </body>
+</html>

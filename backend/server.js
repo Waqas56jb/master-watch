@@ -1,4 +1,5 @@
 require('dotenv').config();
+const fs = require('fs');
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -42,8 +43,30 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 
-const frontendDist = path.join(__dirname, '../frontend/dist');
-const adminDist = path.join(__dirname, '../admin/dist');
+// Resolve backend folder (server.js lives next to package.json; cwd may differ on Vercel).
+const backendRoot = fs.existsSync(path.join(__dirname, 'package.json'))
+  ? __dirname
+  : process.cwd();
+const repoRoot = path.join(backendRoot, '..');
+
+/** Prefer sibling dist in development; prefer repo-root `public/` after sync-dist for production deploys. */
+function resolvedDist(siblingPath, bundledPath) {
+  const siblingIdx = path.join(siblingPath, 'index.html');
+  const bundledIdx = path.join(bundledPath, 'index.html');
+  const hasS = fs.existsSync(siblingIdx);
+  const hasB = fs.existsSync(bundledIdx);
+  if (process.env.NODE_ENV === 'production' && hasB) return bundledPath;
+  if (hasS) return siblingPath;
+  if (hasB) return bundledPath;
+  return siblingPath;
+}
+
+const siblingFrontend = path.join(backendRoot, '..', 'frontend', 'dist');
+const siblingAdmin = path.join(backendRoot, '..', 'admin', 'dist');
+const bundledFrontend = path.join(repoRoot, 'public');
+const bundledAdmin = path.join(repoRoot, 'public', 'admin');
+const frontendDist = resolvedDist(siblingFrontend, bundledFrontend);
+const adminDist = resolvedDist(siblingAdmin, bundledAdmin);
 
 // ── System Prompt ──
 const SYSTEM_PROMPT = `Du bist der offizielle KI-Kundenservice-Assistent von MisterWatch (misterwatches.store) – einem deutschen Premium-Replica-Uhrenshop mit über 5 Jahren Erfahrung und 1.000+ zufriedenen Kunden. Du kennst jeden Artikel, jede Qualitätsstufe, jeden Preis und jede Richtlinie aus diesem Prompt auswendig und gibst nur Informationen weiter, die hier dokumentiert sind.
@@ -377,13 +400,17 @@ app.use((req, res, next) => {
   });
 });
 
-// ── Start Server ──
-app.listen(PORT, () => {
-  console.log(`
+module.exports = app;
+
+// ── Start Server (skipped when imported e.g. by Vercel api/index.js) ──
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`
   ┌─────────────────────────────────────┐
   │   ⌚ MisterWatch Chatbot Server     │
   │   Running on http://localhost:${PORT}   │
   │   Status: Online & Ready            │
   └─────────────────────────────────────┘
   `);
-});
+  });
+}

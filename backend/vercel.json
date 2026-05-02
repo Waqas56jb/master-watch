@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm ci && npm ci --prefix ../frontend && npm ci --prefix ../admin",
+  "buildCommand": "npm run build --prefix ../frontend && VITE_ADMIN_BASE=/admin/ npm run build --prefix ../admin && node scripts/sync-dist.js",
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "../public/**"
+    }
+  }
+}

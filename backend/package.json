@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed-admin": "node scripts/seed-admin.js",
-    "db:apply": "node scripts/apply-schema.js"
+    "db:apply": "node scripts/apply-schema.js",
+    "sync-dist": "node scripts/sync-dist.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
