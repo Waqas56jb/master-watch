@@ -3,13 +3,15 @@ const { Pool } = require('pg');
 let pool = null;
 
 function getPool() {
-  if (!process.env.DATABASE_URL) return null;
+  const raw = process.env.DATABASE_URL;
+  const connectionString = typeof raw === 'string' ? raw.trim() : raw;
+  if (!connectionString) return null;
   if (!pool) {
     const isProdSsl =
       process.env.NODE_ENV === 'production' || process.env.DATABASE_SSL !== 'false';
     const onVercel = Boolean(process.env.VERCEL);
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       ssl: isProdSsl ? { rejectUnauthorized: false } : false,
       max: onVercel ? 1 : 10,
       idleTimeoutMillis: onVercel ? 10_000 : 30_000,

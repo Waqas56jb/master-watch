@@ -392,7 +392,7 @@ app.get('/health', async (req, res) => {
     database: getPool() ? 'configured' : 'off',
     timestamp: new Date().toISOString(),
   };
-  // Note: on Vercel, `vercel.json` rewrites drop the original query string, so `?db=1` may never arrive.
+  // Note: some catch-all rewrites replace the query string, so `?db=1` may not arrive; use GET /health/db.
   if (req.query.db === '1') {
     if (!getPool()) {
       payload.database_ping = 'skipped_no_db_url';
@@ -410,7 +410,7 @@ app.get('/health', async (req, res) => {
   res.json(payload);
 });
 
-/** Path-based DB ping (works with Vercel catch-all rewrite where `?db=1` is stripped). */
+/** Path-based DB ping (avoids relying on `?db=1` if rewrites drop the query string). */
 app.get('/health/db', async (req, res) => {
   const payload = {
     status: 'ok',

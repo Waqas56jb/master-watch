@@ -113,7 +113,7 @@ async function main() {
   console.log(lines.join('\n'));
   if (failed) {
     console.log(
-      '\nHint: If login returns 500, run against the SAME DATABASE_URL as Vercel:\n  cd backend && npm run check-schema\n  cd backend && npm run verify-admin you@email pass'
+      `\nHint: If login is not 401/200, open GET ${base}/health/db (Postgres ping). Use the SAME DATABASE_URL as Vercel (trim pasted value — no trailing newline).\n  cd backend && npm run check-schema\n  cd backend && npm run verify-admin you@email pass\n  Full admin smoke: set ADMIN_TEST_EMAIL + ADMIN_TEST_PASSWORD then re-run this script.`
     );
   }
   process.exit(failed ? 1 : 0);

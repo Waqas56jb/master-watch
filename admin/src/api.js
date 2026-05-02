@@ -1,4 +1,4 @@
-/** Empty string → same-origin `/api/...` (Vercel rewrite → real backend in admin/vercel.json). */
+/** Empty string → same-origin `/api/...` (API must be served on the same host or set VITE_API_BASE). */
 function apiBase() {
   let b = String(import.meta.env.VITE_API_BASE || '').trim().replace(/\/$/, '');
   if (typeof window !== 'undefined' && b) {
