@@ -5,14 +5,77 @@ const { query, getPool, getDashboardStats, getChatbotTheme, setChatbotTheme, DEF
 
 const router = express.Router();
 
-const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
+const JWT_EXPIRES_DEFAULT = '7d';
 
+/** Invalid JWT_EXPIRES (e.g. on Vercel) makes jsonwebtoken throw after a successful password check → opaque 500. */
 function jwtSign(payload) {
   const secret = process.env.JWT_SECRET;
   if (!secret || secret.length < 16) {
     throw new Error('JWT_SECRET missing or too short (min 16 chars)');
   }
-  return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRES });
+  const expiresIn = (process.env.JWT_EXPIRES || JWT_EXPIRES_DEFAULT).trim() || JWT_EXPIRES_DEFAULT;
+  try {
+    return jwt.sign(payload, secret, { expiresIn });
+  } catch (e) {
+    if (/expiresIn/i.test(String(e && e.message))) {
+      return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRES_DEFAULT });
+    }
+    throw e;
+  }
+}
+
+/** Pg / Node network errors may be on `err`, `err.cause`, or `AggregateError.errors[]`. */
+function primaryDbError(err) {
+  if (!err) return err;
+  if (err.code) return err;
+  if (err.cause && err.cause.code) return err.cause;
+  if (Array.isArray(err.errors)) {
+    for (const e of err.errors) {
+      if (e && e.code) return e;
+    }
+  }
+  return err;
+}
+
+function loginErrorFromDatabase(err) {
+  const e = primaryDbError(err);
+  const c = e && e.code;
+  const msg = e && e.message;
+  if (c === '42P01' || (typeof msg === 'string' && /relation .* does not exist/i.test(msg))) {
+    return 'Datenbank-Schema fehlt (z. B. admin_users). Lokal: npm run db:apply';
+  }
+  if (c === '42703' || (typeof msg === 'string' && /column .* does not exist/i.test(msg))) {
+    return 'Datenbank-Schema: Spalte fehlt (admin_users mit backend/schema.sql abgleichen).';
+  }
+  if (c === '28P01') {
+    return 'Datenbank: Authentifizierung fehlgeschlagen (Passwort in DATABASE_URL prüfen).';
+  }
+  if (c === 'ENOTFOUND' || c === 'ECONNREFUSED' || c === 'ETIMEDOUT') {
+    return 'Datenbank-Host nicht erreichbar (DATABASE_URL / Firewall prüfen).';
+  }
+  if (c === 'SELF_SIGNED_CERT_IN_CHAIN' || c === 'DEPTH_ZERO_SELF_SIGNED_CERT') {
+    return 'Datenbank-TLS-Fehler (SSL-Parameter prüfen).';
+  }
+  if (typeof msg === 'string' && /Tenant or user not found/i.test(msg)) {
+    return 'Supabase Pooler: Benutzer/Projekt in DATABASE_URL prüfen (Connection String aus dem Dashboard).';
+  }
+  if (typeof msg === 'string' && /prepared statement.*already exists/i.test(msg)) {
+    return 'Pooler/Prepared Statements: Port 6543 mit ?pgbouncer=true oder direkten Port 5432 nutzen.';
+  }
+  if (typeof msg === 'string' && /SSL|TLS|certificate/i.test(msg) && c !== '28P01') {
+    return 'Datenbank-TLS/SSL-Fehler (Supabase: direkte Verbindung, sslmode=require).';
+  }
+  if (
+    typeof msg === 'string' &&
+    (/timeout exceeded when trying to connect/i.test(msg) ||
+      /Connection terminated due to connection timeout/i.test(msg))
+  ) {
+    return 'Datenbank: Verbindungs-Timeout (Host/Port/Firewall oder Supabase-URI prüfen).';
+  }
+  if (typeof msg === 'string' && /Client has encountered a connection error|Connection terminated unexpectedly/i.test(msg)) {
+    return 'Datenbank-Verbindung abgebrochen (Pooler/Netzwerk — URI und Supabase-Status prüfen).';
+  }
+  return null;
 }
 
 function authMiddleware(req, res, next) {
@@ -41,15 +104,21 @@ router.post('/auth/login', async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
     }
+    const emailNorm = String(email).trim().toLowerCase();
+    if (emailNorm.length > 320) {
+      return res.status(400).json({ error: 'E-Mail zu lang' });
+    }
     const r = await query(
       `SELECT id, email, password_hash, display_name FROM admin_users WHERE email = $1 AND is_active = TRUE`,
-      [String(email).trim().toLowerCase()]
+      [emailNorm]
     );
     const user = r.rows[0];
     let passwordOk = false;
     if (user?.password_hash) {
+      const stored = user.password_hash;
+      const hashStr = Buffer.isBuffer(stored) ? stored.toString('utf8') : String(stored);
       try {
-        passwordOk = await bcrypt.compare(String(password), user.password_hash);
+        passwordOk = await bcrypt.compare(String(password), hashStr);
       } catch {
         passwordOk = false;
       }
@@ -57,14 +126,19 @@ router.post('/auth/login', async (req, res) => {
     if (!passwordOk) {
       return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
     }
-    const token = jwtSign({ sub: user.id, email: user.email });
+    const token = jwtSign({ sub: String(user.id), email: user.email });
     return res.json({
       token,
       user: { id: user.id, email: user.email, displayName: user.display_name },
     });
   } catch (e) {
     console.error('admin login', e);
-    return res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+    const fromDb = loginErrorFromDatabase(e);
+    const debug = process.env.API_DEBUG === '1';
+    return res.status(500).json({
+      error: fromDb || 'Anmeldung fehlgeschlagen',
+      ...(debug && e && { detail: e.message, code: e.code }),
+    });
   }
 });
 

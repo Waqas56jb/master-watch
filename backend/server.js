@@ -14,13 +14,14 @@ const PORT = process.env.PORT || 3000;
 
 // Vercel rewrites hit `api/index.js` as `/api?__v_path=<captured path>` so the real URL is not lost.
 // Restore `req.url` before routes/CORS so `/api/admin/…`, `/chat`, etc. match.
+// Run whenever `__v_path` is present (not only when VERCEL is set) so misconfigured env still routes correctly.
 app.use((req, _res, next) => {
-  if (!process.env.VERCEL) return next();
   try {
     const i = req.url.indexOf('?');
     if (i === -1) return next();
     const pathname = req.url.slice(0, i);
-    if (pathname !== '/api' && pathname !== '') return next();
+    // Vercel sends the captured path as `/api?__v_path=...` only (pathname is exactly `/api`).
+    if (pathname !== '/api') return next();
     const qs = new URLSearchParams(req.url.slice(i + 1));
     const vp = qs.get('__v_path');
     if (vp === null) return next();
@@ -384,13 +385,52 @@ app.post('/chat', async (req, res) => {
 });
 
 // ── Health Check ──
-app.get('/health', (req, res) => {
-  res.json({
+app.get('/health', async (req, res) => {
+  const payload = {
     status: 'ok',
     service: 'MisterWatch Chatbot',
     database: getPool() ? 'configured' : 'off',
     timestamp: new Date().toISOString(),
-  });
+  };
+  // Note: on Vercel, `vercel.json` rewrites drop the original query string, so `?db=1` may never arrive.
+  if (req.query.db === '1') {
+    if (!getPool()) {
+      payload.database_ping = 'skipped_no_db_url';
+    } else {
+      try {
+        await query('SELECT 1 AS ok');
+        payload.database_ping = 'ok';
+      } catch (e) {
+        payload.database_ping = 'error';
+        payload.database_error =
+          process.env.API_DEBUG === '1' && e ? `${e.code || ''} ${e.message}`.trim() : 'set API_DEBUG=1 for detail';
+      }
+    }
+  }
+  res.json(payload);
+});
+
+/** Path-based DB ping (works with Vercel catch-all rewrite where `?db=1` is stripped). */
+app.get('/health/db', async (req, res) => {
+  const payload = {
+    status: 'ok',
+    service: 'MisterWatch Chatbot',
+    database: getPool() ? 'configured' : 'off',
+    timestamp: new Date().toISOString(),
+  };
+  if (!getPool()) {
+    payload.database_ping = 'skipped_no_db_url';
+    return res.json(payload);
+  }
+  try {
+    await query('SELECT 1 AS ok');
+    payload.database_ping = 'ok';
+  } catch (e) {
+    payload.database_ping = 'error';
+    payload.database_error =
+      process.env.API_DEBUG === '1' && e ? `${e.code || ''} ${e.message}`.trim() : 'set API_DEBUG=1 for detail';
+  }
+  res.json(payload);
 });
 
 // Admin SPA — on Vercel, CDN serves `public/admin/**`; keep static + fallback for local dev and client-side routes that miss the CDN.
@@ -404,7 +444,13 @@ app.use(express.static(frontendDist));
 
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (req.path.startsWith('/api') || req.path.startsWith('/admin')) return next();
+  if (
+    req.path.startsWith('/api') ||
+    req.path.startsWith('/admin') ||
+    req.path.startsWith('/health')
+  ) {
+    return next();
+  }
   res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
     if (err) next(err);
   });

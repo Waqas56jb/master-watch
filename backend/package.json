@@ -8,6 +8,8 @@
     "dev": "nodemon server.js",
     "seed-admin": "node scripts/seed-admin.js",
     "verify-admin": "node scripts/verify-admin-login.js",
+    "verify-api": "node scripts/verify-api.js",
+    "check-schema": "node scripts/check-schema.js",
     "db:apply": "node scripts/apply-schema.js",
     "sync-dist": "node scripts/sync-dist.js"
   },

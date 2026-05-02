@@ -13,7 +13,8 @@ function getPool() {
       ssl: isProdSsl ? { rejectUnauthorized: false } : false,
       max: onVercel ? 1 : 10,
       idleTimeoutMillis: onVercel ? 10_000 : 30_000,
-      connectionTimeoutMillis: 8000,
+      // Cold start + DNS + TLS to Supabase can exceed 8s on serverless.
+      connectionTimeoutMillis: onVercel ? 20000 : 8000,
       ...(onVercel ? { prepareThreshold: 0 } : {}),
     });
   }
