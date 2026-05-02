@@ -12,6 +12,28 @@ const { runAssistantChat } = require('./lib/chatAssistant');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Vercel rewrites hit `api/index.js` as `/api?__v_path=<captured path>` so the real URL is not lost.
+// Restore `req.url` before routes/CORS so `/api/admin/…`, `/chat`, etc. match.
+app.use((req, _res, next) => {
+  if (!process.env.VERCEL) return next();
+  try {
+    const i = req.url.indexOf('?');
+    if (i === -1) return next();
+    const pathname = req.url.slice(0, i);
+    if (pathname !== '/api' && pathname !== '') return next();
+    const qs = new URLSearchParams(req.url.slice(i + 1));
+    const vp = qs.get('__v_path');
+    if (vp === null) return next();
+    qs.delete('__v_path');
+    const tail = qs.toString();
+    const pathOnly = vp === '' ? '' : vp.replace(/^\/+/, '');
+    req.url = `/${pathOnly}${tail ? `?${tail}` : ''}`;
+  } catch {
+    /* ignore */
+  }
+  next();
+});
+
 // ── OpenAI Client ──
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
