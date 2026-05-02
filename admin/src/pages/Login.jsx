@@ -35,7 +35,13 @@ export default function Login() {
       setToken(data.token, data.user?.email || email.trim());
       nav('/dashboard');
     } catch (e2) {
-      setErr(e2?.data?.error || e2.message || 'Login fehlgeschlagen');
+      const apiMsg = e2?.data?.error || e2.message || 'Login fehlgeschlagen';
+      // 401: API DB often differs from local — seed admin on the same Postgres Vercel uses (DATABASE_URL).
+      const hint =
+        e2?.status === 401
+          ? ' — Für Vercel: Im Supabase (gleiches Projekt wie DATABASE_URL im Backend) den Admin anlegen/aktualisieren (lokal `backend`: DATABASE_URL aus Vercel setzen, dann `node scripts/seed-admin.js`).'
+          : '';
+      setErr(apiMsg + hint);
     } finally {
       setLoading(false);
     }
