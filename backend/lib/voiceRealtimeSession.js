@@ -46,41 +46,6 @@ function realtimeVoice() {
   return String(process.env.OPENAI_REALTIME_VOICE || 'echo').trim() || 'echo';
 }
 
-/**
- * Turn detection — default server VAD tuned for laptop / room noise.
- * Optional: OPENAI_REALTIME_VAD_MODE=semantic + OPENAI_REALTIME_VAD_EAGERNESS=low|medium|high|auto
- * Overrides: OPENAI_REALTIME_VAD_THRESHOLD, OPENAI_REALTIME_VAD_SILENCE_MS, OPENAI_REALTIME_VAD_PREFIX_MS
- */
-function realtimeTurnDetection() {
-  const mode = String(process.env.OPENAI_REALTIME_VAD_MODE || 'server').trim().toLowerCase();
-  if (mode === 'semantic' || mode === 'semantic_vad') {
-    const e = String(process.env.OPENAI_REALTIME_VAD_EAGERNESS || 'low').trim().toLowerCase();
-    const ok = ['low', 'medium', 'high', 'auto'];
-    return {
-      type: 'semantic_vad',
-      eagerness: ok.includes(e) ? e : 'low',
-    };
-  }
-
-  const threshold = Number.parseFloat(process.env.OPENAI_REALTIME_VAD_THRESHOLD || '');
-  const silenceMs = Number.parseInt(process.env.OPENAI_REALTIME_VAD_SILENCE_MS || '', 10);
-  const prefixMs = Number.parseInt(process.env.OPENAI_REALTIME_VAD_PREFIX_MS || '', 10);
-  return {
-    type: 'server_vad',
-    threshold: Number.isFinite(threshold) ? Math.min(0.95, Math.max(0.35, threshold)) : 0.73,
-    prefix_padding_ms: Number.isFinite(prefixMs) ? Math.min(600, Math.max(120, prefixMs)) : 380,
-    silence_duration_ms: Number.isFinite(silenceMs) ? Math.min(2000, Math.max(400, silenceMs)) : 1300,
-  };
-}
-
-/** Optional: `far_field` | `near_field` — set OPENAI_REALTIME_INPUT_NR=off to disable. */
-function optionalInputNoiseReduction() {
-  const raw = String(process.env.OPENAI_REALTIME_INPUT_NR || 'far_field').trim().toLowerCase();
-  if (!raw || raw === 'off' || raw === '0' || raw === 'false') return null;
-  if (raw === 'far_field' || raw === 'near_field') return { type: raw };
-  return null;
-}
-
 /** Minimal body for POST /v1/realtime/sessions (matches voiceagent_backend style). */
 function buildMinimalMintPayload() {
   return {
@@ -105,7 +70,7 @@ async function buildClientWebsocketSession() {
   const tools = poolActive ? chatToolsToRealtime(CHAT_TOOLS) : [];
   const tool_choice = tools.length ? 'auto' : 'none';
 
-  const session = {
+  return {
     modalities: ['text', 'audio'],
     instructions,
     voice: realtimeVoice(),
@@ -115,18 +80,17 @@ async function buildClientWebsocketSession() {
       model: 'whisper-1',
       language: 'de',
     },
-    turn_detection: realtimeTurnDetection(),
+    turn_detection: {
+      type: 'server_vad',
+      threshold: 0.45,
+      prefix_padding_ms: 200,
+      silence_duration_ms: 600,
+    },
     tools,
     tool_choice,
     temperature: 0.8,
     max_response_output_tokens: 400,
   };
-
-  const nr = optionalInputNoiseReduction();
-  if (nr) {
-    session.input_audio_noise_reduction = nr;
-  }
-  return session;
 }
 
 function realtimeWireFormatMeta() {
