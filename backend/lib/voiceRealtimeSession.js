@@ -1,9 +1,11 @@
 /**
- * OpenAI Realtime (speech-to-speech) session payload for MisterWatch.
+ * OpenAI Realtime (speech-to-speech) for MisterWatch.
  *
- * Audio codecs (official Realtime WebSocket): `pcm16` (24 kHz mono), `g711_ulaw`, `g711_alaw`.
- * There is no Opus option on the Realtime session — Opus appears in WebRTC elsewhere;
- * the browser hook sends PCM16 frames, which matches the API contract.
+ * Minting: OpenAI recommends a small POST body for `/v1/realtime/sessions` (ephemeral key).
+ * Full instructions + tools are sent from the browser via `session.update` after the
+ * WebSocket connects (same pattern as voiceagent_backend).
+ *
+ * Wire audio: pcm16 @ 24 kHz (no Opus flag on Realtime WebSocket).
  */
 
 const { getPool } = require('../db');
@@ -33,10 +35,30 @@ function chatToolsToRealtime(tools) {
   }));
 }
 
+function realtimeModel() {
+  return (
+    String(process.env.OPENAI_REALTIME_MODEL || '').trim() ||
+    'gpt-4o-realtime-preview-2024-12-17'
+  );
+}
+
+function realtimeVoice() {
+  return String(process.env.OPENAI_REALTIME_VOICE || 'echo').trim() || 'echo';
+}
+
+/** Minimal body for POST /v1/realtime/sessions (matches voiceagent_backend style). */
+function buildMinimalMintPayload() {
+  return {
+    model: realtimeModel(),
+    voice: realtimeVoice(),
+  };
+}
+
 /**
- * Builds the JSON body for POST https://api.openai.com/v1/realtime/sessions
+ * Full `session` object for the client's `session.update` WebSocket event.
+ * Include `type: "realtime"` for GA-compatible clients.
  */
-async function buildOpenAIRealtimeSessionBody() {
+async function buildClientWebsocketSession() {
   const base = await buildFullSystemPrompt();
   const crm = (await fetchCrmToolsInstructions()).trim();
   let instructions = [base, crm, VOICE_DE_SUFFIX].filter(Boolean).join('\n\n').trim();
@@ -48,16 +70,10 @@ async function buildOpenAIRealtimeSessionBody() {
   const tools = poolActive ? chatToolsToRealtime(CHAT_TOOLS) : [];
   const tool_choice = tools.length ? 'auto' : 'none';
 
-  const model =
-    String(process.env.OPENAI_REALTIME_MODEL || '').trim() ||
-    'gpt-4o-realtime-preview-2024-12-17';
-  const voice = String(process.env.OPENAI_REALTIME_VOICE || 'echo').trim() || 'echo';
-
   return {
-    model,
     modalities: ['text', 'audio'],
     instructions,
-    voice,
+    voice: realtimeVoice(),
     input_audio_format: 'pcm16',
     output_audio_format: 'pcm16',
     input_audio_transcription: {
@@ -90,6 +106,8 @@ function realtimeWireFormatMeta() {
 }
 
 module.exports = {
-  buildOpenAIRealtimeSessionBody,
+  buildMinimalMintPayload,
+  buildClientWebsocketSession,
   realtimeWireFormatMeta,
+  realtimeModel,
 };

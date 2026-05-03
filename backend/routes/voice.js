@@ -1,5 +1,10 @@
 const express = require('express');
-const { buildOpenAIRealtimeSessionBody, realtimeWireFormatMeta } = require('../lib/voiceRealtimeSession');
+const {
+  buildMinimalMintPayload,
+  buildClientWebsocketSession,
+  realtimeWireFormatMeta,
+  realtimeModel,
+} = require('../lib/voiceRealtimeSession');
 const { executeVoiceCrmTool } = require('../lib/chatAssistant');
 
 const router = express.Router();
@@ -10,7 +15,8 @@ const OPENAI_SESSION_URL =
 
 /**
  * POST /api/voice/session
- * Mints an ephemeral client secret; session (German, PCM16, tools) is attached to the token.
+ * Mints ephemeral key (minimal body, like voiceagent_backend). Returns `clientSession`
+ * for the browser to send as `session.update` after the WebSocket opens.
  */
 router.post('/session', async (req, res) => {
   try {
@@ -19,7 +25,8 @@ router.post('/session', async (req, res) => {
       return res.status(503).json({ error: 'OPENAI_API_KEY fehlt auf dem Server.' });
     }
 
-    const sessionBody = await buildOpenAIRealtimeSessionBody();
+    const mintPayload = buildMinimalMintPayload();
+    const clientSession = await buildClientWebsocketSession();
 
     const response = await fetch(OPENAI_SESSION_URL, {
       method: 'POST',
@@ -27,7 +34,7 @@ router.post('/session', async (req, res) => {
         Authorization: `Bearer ${String(key).trim()}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(sessionBody),
+      body: JSON.stringify(mintPayload),
     });
 
     const data = await response.json().catch(() => ({}));
@@ -48,8 +55,9 @@ router.post('/session', async (req, res) => {
 
     return res.json({
       ephemeralKey,
-      model: data.model || sessionBody.model,
-      sessionConfiguredAtMint: true,
+      model: data.model || mintPayload.model || realtimeModel(),
+      clientSession,
+      sessionConfiguredAtMint: false,
       audio: realtimeWireFormatMeta(),
     });
   } catch (err) {

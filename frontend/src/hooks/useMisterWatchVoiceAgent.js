@@ -135,9 +135,15 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
 
   /* ── WebSocket message handler ────────────────────────────── */
   const handleMessage = useCallback((raw) => {
-    const msg = JSON.parse(raw);
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const t = msg.type;
 
-    switch (msg.type) {
+    switch (t) {
 
       /* Track which audio item is currently playing (needed for truncation) */
       case "response.output_item.added":
@@ -176,11 +182,13 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         break;
 
       case "response.audio.delta":
+      case "response.output_audio.delta":
         if (msg.delta) playChunk(msg.delta);
         break;
 
       case "response.audio_transcript.delta":
-        if (msg.delta) setAgentTranscript(prev => prev + msg.delta);
+      case "response.output_audio_transcript.delta":
+        if (msg.delta) setAgentTranscript((prev) => prev + msg.delta);
         break;
 
       case "conversation.item.input_audio_transcription.completed":
@@ -208,11 +216,21 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         audioItemIdRef.current = null;
         break;
 
-      case "error":
-        console.error("Realtime WS error:", msg.error);
-        setError(msg.error?.message || "Voice agent error");
+      case "error": {
+        const err = msg.error;
+        const detail =
+          typeof err?.message === "string"
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : err && typeof err === "object"
+                ? JSON.stringify(err)
+                : "Voice agent error";
+        console.error("Realtime WS error:", err);
+        setError(detail);
         setStatus("error");
         break;
+      }
 
       default:
         break;
@@ -374,7 +392,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         ephemeralKey,
         error: sessionError,
         model: modelFromServer,
-        sessionConfiguredAtMint,
+        clientSession,
       } = sessionJson;
       if (sessionError) throw new Error(JSON.stringify(sessionError));
 
@@ -382,11 +400,19 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         typeof modelFromServer === "string" && modelFromServer.trim()
           ? modelFromServer.trim()
           : "gpt-4o-realtime-preview-2024-12-17";
-      const skipClientSessionUpdate = Boolean(sessionConfiguredAtMint);
+      /** Preview models use the beta WebSocket subprotocol; newer GA models often omit it. */
+      const useBetaRealtimeSubprotocol = /preview/i.test(realtimeModel);
 
       /* 2. AudioContext at 24 kHz (Realtime API requirement) */
       audioCtxRef.current     = new AudioContext({ sampleRate: 24000 });
       nextPlayTimeRef.current = 0;
+      try {
+        if (audioCtxRef.current.state === "suspended") {
+          await audioCtxRef.current.resume();
+        }
+      } catch {
+        /* ignore */
+      }
 
       /* 3. Mic capture — full quality constraints for noise/echo suppression */
       let stream;
@@ -422,47 +448,55 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       silent.connect(audioCtxRef.current.destination);
 
       /* 4. Open WebSocket to OpenAI Realtime API (model must match minted session) */
+      const wsProtocols = [
+        "realtime",
+        `openai-insecure-api-key.${ephemeralKey}`,
+      ];
+      if (useBetaRealtimeSubprotocol) {
+        wsProtocols.push("openai-beta.realtime-v1");
+      }
       const ws = new WebSocket(
         `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`,
-        [
-          "realtime",
-          `openai-insecure-api-key.${ephemeralKey}`,
-          "openai-beta.realtime-v1",
-        ]
+        wsProtocols
       );
       wsRef.current = ws;
 
       ws.onopen = () => {
-        /* Backend mints session with DB prompts + German + pcm16; avoid overwriting with empty tools. */
-        if (!skipClientSessionUpdate) {
-          ws.send(JSON.stringify({
-            type: "session.update",
-            session: {
-              modalities:          ["text", "audio"],
-              instructions:        VOICE_INSTRUCTIONS,
-              voice:               "echo",
-              input_audio_format:  "pcm16",
+        const serverSession =
+          clientSession && typeof clientSession === "object" && !Array.isArray(clientSession)
+            ? clientSession
+            : null;
+        const sessionPayload = serverSession
+          ? serverSession
+          : {
+              modalities: ["text", "audio"],
+              instructions: VOICE_INSTRUCTIONS,
+              voice: "echo",
+              input_audio_format: "pcm16",
               output_audio_format: "pcm16",
               input_audio_transcription: { model: "whisper-1", language: "de" },
               turn_detection: {
-                type:                 "server_vad",
-                threshold:            0.45,
-                prefix_padding_ms:    200,
-                silence_duration_ms:  600,
+                type: "server_vad",
+                threshold: 0.45,
+                prefix_padding_ms: 200,
+                silence_duration_ms: 600,
               },
-              tools:       VOICE_TOOLS,
+              tools: VOICE_TOOLS,
               tool_choice: VOICE_TOOLS.length ? "auto" : "none",
               temperature: 0.8,
               max_response_output_tokens: 150,
-            },
-          }));
-        }
+            };
 
-        /* Warm greeting kick-off */
+        ws.send(JSON.stringify({
+          type: "session.update",
+          session: sessionPayload,
+        }));
+
+        /* Warm greeting kick-off (after session.update, same order as voiceagent frontend) */
         ws.send(JSON.stringify({
           type: "response.create",
           response: {
-            modalities:   ["audio", "text"],
+            modalities: ["audio", "text"],
             instructions:
               "Begrüße den Nutzer in einem kurzen, freundlichen Satz auf Deutsch. Du bist der Voice-Assistent von MisterWatch und hilfst bei Uhren und dem Shop misterwatches.store.",
           },
