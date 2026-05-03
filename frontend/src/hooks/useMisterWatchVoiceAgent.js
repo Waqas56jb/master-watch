@@ -43,6 +43,39 @@ function floatTo16BitPCM(float32Array) {
   return int16;
 }
 
+/** RMS (approx.) of a mono float32 PCM buffer, ~0–0.35 for typical speech. */
+function pcmFrameRms(float32) {
+  if (!float32?.length) return 0;
+  let acc = 0;
+  for (let i = 0; i < float32.length; i += 1) {
+    const x = float32[i];
+    acc += x * x;
+  }
+  return Math.sqrt(acc / float32.length);
+}
+
+/**
+ * Hysteresis noise gate: only streams clear speech; brief dips inside a phrase stay open.
+ * Reduces constant HVAC/keyboard energy that otherwise triggers server VAD.
+ */
+function applyMicNoiseGate(float32, gateOpenRef, openRms, closeRms) {
+  const rms = pcmFrameRms(float32);
+  let open = gateOpenRef.current;
+  if (!open && rms >= openRms) open = true;
+  else if (open && rms <= closeRms) open = false;
+  gateOpenRef.current = open;
+  if (open) return float32;
+  return new Float32Array(float32.length);
+}
+
+/** Must match backend `realtimeTurnDetection()` defaults unless overridden by API `clientSession`. */
+const DEFAULT_REALTIME_TURN_DETECTION = {
+  type: "server_vad",
+  threshold: 0.73,
+  prefix_padding_ms: 380,
+  silence_duration_ms: 1300,
+};
+
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   let bin = "";
@@ -81,6 +114,8 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
   const toolCallBufferRef  = useRef({});
   const browserAbortRef    = useRef(false);
   const browserRecRef      = useRef(null);
+  /** Mic hysteresis gate (Realtime path only); reset in cleanup. */
+  const micGateOpenRef     = useRef(false);
 
   /* ── Play PCM16 audio chunk ───────────────────────────────── */
   const playChunk = useCallback((base64Audio) => {
@@ -268,6 +303,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
     audioItemIdRef.current    = null;
     toolCallBufferRef.current = {};
     isMutedRef.current        = false;
+    micGateOpenRef.current    = false;
   }, []);
 
   const runBrowserVoiceSession = useCallback(async (replyFn) => {
@@ -419,12 +455,12 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation:  true,
-            noiseSuppression:  true,
-            autoGainControl:   true,
-            sampleRate:        24000,
-            channelCount:      1,
-            latency:           0,            // request lowest possible latency
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 24000,
+            channelCount: 1,
+            latency: 0,
           },
         });
       } catch (micErr) {
@@ -434,6 +470,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         throw new Error("Could not access microphone: " + micErr.message);
       }
       streamRef.current = stream;
+      micGateOpenRef.current = false;
 
       /* Processor buffer size = 2048 (≈85ms at 24kHz) — low latency */
       const micSource  = audioCtxRef.current.createMediaStreamSource(stream);
@@ -475,12 +512,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
               input_audio_format: "pcm16",
               output_audio_format: "pcm16",
               input_audio_transcription: { model: "whisper-1", language: "de" },
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.45,
-                prefix_padding_ms: 200,
-                silence_duration_ms: 600,
-              },
+              turn_detection: { ...DEFAULT_REALTIME_TURN_DETECTION },
               tools: VOICE_TOOLS,
               tool_choice: VOICE_TOOLS.length ? "auto" : "none",
               temperature: 0.8,
@@ -527,7 +559,8 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
           wsRef.current?.readyState !== WebSocket.OPEN ||
           isMutedRef.current
         ) return;
-        const float32 = e.inputBuffer.getChannelData(0);
+        const raw = e.inputBuffer.getChannelData(0);
+        const float32 = applyMicNoiseGate(raw, micGateOpenRef, 0.018, 0.0075);
         const pcm16   = floatTo16BitPCM(float32);
         const b64     = arrayBufferToBase64(pcm16.buffer);
         wsRef.current.send(JSON.stringify({
