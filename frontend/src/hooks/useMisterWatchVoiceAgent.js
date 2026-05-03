@@ -369,8 +369,20 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         await runBrowserVoiceSession(fetchChatReply);
         return;
       }
-      const { ephemeralKey, error: sessionError } = await res.json();
+      const sessionJson = await res.json();
+      const {
+        ephemeralKey,
+        error: sessionError,
+        model: modelFromServer,
+        sessionConfiguredAtMint,
+      } = sessionJson;
       if (sessionError) throw new Error(JSON.stringify(sessionError));
+
+      const realtimeModel =
+        typeof modelFromServer === "string" && modelFromServer.trim()
+          ? modelFromServer.trim()
+          : "gpt-4o-realtime-preview-2024-12-17";
+      const skipClientSessionUpdate = Boolean(sessionConfiguredAtMint);
 
       /* 2. AudioContext at 24 kHz (Realtime API requirement) */
       audioCtxRef.current     = new AudioContext({ sampleRate: 24000 });
@@ -409,9 +421,9 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       processor.connect(silent);
       silent.connect(audioCtxRef.current.destination);
 
-      /* 4. Open WebSocket to OpenAI Realtime API */
+      /* 4. Open WebSocket to OpenAI Realtime API (model must match minted session) */
       const ws = new WebSocket(
-        "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17",
+        `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`,
         [
           "realtime",
           `openai-insecure-api-key.${ephemeralKey}`,
@@ -421,28 +433,30 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        /* Configure session with quality VAD settings and warm male voice */
-        ws.send(JSON.stringify({
-          type: "session.update",
-          session: {
-            modalities:          ["text", "audio"],
-            instructions:        VOICE_INSTRUCTIONS,
-            voice:               "echo",            // warm, friendly male voice
-            input_audio_format:  "pcm16",
-            output_audio_format: "pcm16",
-            input_audio_transcription: { model: "whisper-1" },
-            turn_detection: {
-              type:                 "server_vad",
-              threshold:            0.45,           // slightly sensitive for natural detection
-              prefix_padding_ms:    200,            // capture start of speech quickly
-              silence_duration_ms:  600,            // 600ms pause = end of turn
+        /* Backend mints session with DB prompts + German + pcm16; avoid overwriting with empty tools. */
+        if (!skipClientSessionUpdate) {
+          ws.send(JSON.stringify({
+            type: "session.update",
+            session: {
+              modalities:          ["text", "audio"],
+              instructions:        VOICE_INSTRUCTIONS,
+              voice:               "echo",
+              input_audio_format:  "pcm16",
+              output_audio_format: "pcm16",
+              input_audio_transcription: { model: "whisper-1", language: "de" },
+              turn_detection: {
+                type:                 "server_vad",
+                threshold:            0.45,
+                prefix_padding_ms:    200,
+                silence_duration_ms:  600,
+              },
+              tools:       VOICE_TOOLS,
+              tool_choice: VOICE_TOOLS.length ? "auto" : "none",
+              temperature: 0.8,
+              max_response_output_tokens: 150,
             },
-            tools:       VOICE_TOOLS,
-            tool_choice: "auto",
-            temperature: 0.8,                       // slight creativity for natural speech
-            max_response_output_tokens: 150,        // keep responses short (voice = concise)
-          },
-        }));
+          }));
+        }
 
         /* Warm greeting kick-off */
         ws.send(JSON.stringify({

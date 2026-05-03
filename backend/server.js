@@ -7,6 +7,7 @@ const OpenAI = require('openai');
 const { query, getPool, getDatabaseHostFromEnv, probeSupabasePoolerRegion } = require('./db');
 const { router: adminRouter } = require('./routes/admin');
 const { router: publicRouter } = require('./routes/publicApi');
+const voiceRouter = require('./routes/voice');
 const { runAssistantChat } = require('./lib/chatAssistant');
 const { buildFullSystemPrompt, fetchCrmToolsInstructions } = require('./lib/chatbotPrompt');
 
@@ -135,6 +136,7 @@ const adminDist = resolvedDist(siblingAdmin, bundledAdmin);
 // ── Admin API ──
 app.use('/api/admin', adminRouter);
 app.use('/api/public', publicRouter);
+app.use('/api/voice', voiceRouter);
 
 // ── Chat Endpoint ──
 app.post('/chat', async (req, res) => {
@@ -193,6 +195,7 @@ app.get('/health', async (req, res) => {
     service: 'MisterWatch Chatbot',
     database: getPool() ? 'configured' : 'off',
     openai: process.env.OPENAI_API_KEY && String(process.env.OPENAI_API_KEY).trim() ? 'configured' : 'off',
+    voice_realtime: process.env.OPENAI_API_KEY && String(process.env.OPENAI_API_KEY).trim() ? 'pcm16_de' : 'off',
     timestamp: new Date().toISOString(),
   };
   // Note: some catch-all rewrites replace the query string, so `?db=1` may not arrive; use GET /health/db.

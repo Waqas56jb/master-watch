@@ -210,4 +210,14 @@ async function runAssistantChat(openai, { baseSystemPrompt, crmToolsInstructions
   return 'Bitte noch einmal kurz schreiben oder direkt **WhatsApp +49 157 55483605** — danke für deine Geduld.';
 }
 
-module.exports = { CHAT_TOOLS, runAssistantChat };
+/** Parsed CRM tool result for POST /api/voice/execute-tool (OpenAI Realtime). */
+async function executeVoiceCrmTool(name, rawArgs) {
+  const str = await execTool(name, rawArgs);
+  try {
+    return JSON.parse(str);
+  } catch {
+    return { ok: false, error: 'tool_output_parse_failed', detail: str };
+  }
+}
+
+module.exports = { CHAT_TOOLS, runAssistantChat, executeVoiceCrmTool };
