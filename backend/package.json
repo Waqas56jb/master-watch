@@ -11,9 +11,11 @@
     "verify-api": "node scripts/verify-api.js",
     "check-schema": "node scripts/check-schema.js",
     "db:apply": "node scripts/apply-schema.js",
-    "sync-dist": "node scripts/sync-dist.js"
+    "sync-dist": "node scripts/sync-dist.js",
+    "supabase:schema": "node scripts/supabase-get-schema.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

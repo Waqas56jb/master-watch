@@ -1,14 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+/** Backend for `npm run dev` proxy (override if API is not on :3000). */
+const apiTarget = process.env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:3000';
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      '/chat': { target: 'http://localhost:3000', changeOrigin: true },
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
-      '/health': { target: 'http://localhost:3000', changeOrigin: true },
+      '/chat': { target: apiTarget, changeOrigin: true },
+      '/api': { target: apiTarget, changeOrigin: true },
+      '/health': { target: apiTarget, changeOrigin: true },
     },
   },
   build: {

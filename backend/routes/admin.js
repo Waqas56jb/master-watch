@@ -48,7 +48,10 @@ function loginErrorFromDatabase(err) {
     return 'Datenbank-TLS-Fehler (SSL-Parameter prüfen).';
   }
   if (typeof msg === 'string' && /Tenant or user not found/i.test(msg)) {
-    return 'Supabase Pooler: Benutzer/Projekt in DATABASE_URL prüfen (Connection String aus dem Dashboard).';
+    return (
+      'Supabase Pooler: falscher Host (aws-0 vs aws-1) oder Region — in Connect die Transaction-Pooler-URI kopieren, ' +
+      'oder SUPABASE_POOLER_REGION + SUPABASE_POOLER_AWS_PREFIX=aws-1 setzen (z. B. ap-northeast-1).'
+    );
   }
   if (typeof msg === 'string' && /prepared statement.*already exists/i.test(msg)) {
     return 'Pooler/Prepared Statements: Port 6543 mit ?pgbouncer=true oder direkten Port 5432 nutzen.';

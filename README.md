@@ -4,10 +4,10 @@ MisterWatch customer chat: React frontend (Vite), **admin panel** (Vite), and Ex
 
 ## Setup
 
-### 1. Database (Neon / Postgres)
+### 1. Database (Postgres — Supabase, Neon, etc.)
 
-1. Create a project on [Neon](https://neon.tech) and copy the connection string (`DATABASE_URL`).
-2. In the Neon SQL editor (or `psql`), run the schema:
+1. Create a project and copy **`DATABASE_URL`**. The backend **auto-rewrites** Supabase direct `db.*:5432` URLs to the **Transaction pooler** (IPv4) unless `SUPABASE_AUTO_POOLER=false`. Set **`SUPABASE_POOLER_REGION`** (e.g. `eu-central-1`, `us-east-1`) from **Supabase → Connect** if the default region does not match your project.
+2. In the SQL editor (or `psql`), run the schema:
 
    ```bash
    # from repo root
@@ -21,14 +21,26 @@ cd backend
 npm install
 ```
 
+Optional — print schema via Supabase RPC `get_schema_info` (same pattern as `@supabase/supabase-js` in your script; requires that RPC in Postgres):
+
+```bash
+cd backend
+npm run supabase:schema
+```
+
+The HTTP app still uses **`pg` + `DATABASE_URL`** for admin SQL, bcrypt login, and dashboards; the Supabase JS client is for **REST/RPC** helpers (see `lib/supabase.js`).
+
 Copy `backend/.env.example` to `backend/.env` and set:
 
 | Variable | Purpose |
 |---------|---------|
 | `OPENAI_API_KEY` | OpenAI API key for `/chat` |
-| `DATABASE_URL` | Postgres connection string (Neon) |
-| `JWT_SECRET` | Long random secret for admin JWT (min ~16 chars) |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Used once to create the admin user |
+| `DATABASE_URL` | Postgres connection string (Supabase / Neon) |
+| `SUPABASE_URL` | Supabase project URL (optional for REST; required with service role below if `JWT_SECRET` unset) |
+| `SUPABASE_ANON_KEY` | Supabase anon key (optional unless you add client-side Supabase) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only; used to **derive** admin JWT signing key when `JWT_SECRET` is unset; also `lib/supabase.js` (`createClient`) |
+| `JWT_SECRET` | Optional: fixed admin JWT secret (≥16 chars); overrides derivation from service role |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Used once to create the admin user (`npm run seed-admin`) |
 | `ALLOWED_ORIGINS` | Optional comma-separated CORS origins for production |
 
 Create the admin user:
@@ -73,7 +85,9 @@ npm run dev
 
 Open `http://localhost:5174/admin/` (Vite dev server; `basename` is `/admin`).
 
-If the admin is served from another origin in production, set `VITE_API_BASE` when building, e.g.:
+**Local API URL:** With no env vars, `/api` is proxied to **`http://127.0.0.1:3000`**. If your backend uses another port, set `VITE_DEV_PROXY_TARGET` (see `admin/.env.example` and `admin/vite.config.js`).
+
+If the admin is served from another origin in production, set `VITE_API_BASE` (or `VITE_PUBLIC_API_URL`) when building:
 
 ```bash
 VITE_API_BASE=https://your-api.vercel.app npm run build
@@ -84,7 +98,7 @@ VITE_API_BASE=https://your-api.vercel.app npm run build
 1. **Default:** The large `SYSTEM_PROMPT` constant in `backend/server.js` is always included (unchanged design).
 2. **Database:** Active rows from `knowledge_entries` are loaded on each `/chat` request and appended after the prompt under `ERWEITERTES WISSEN AUS ADMIN-PANEL`.
 
-If `DATABASE_URL` is unset, the app runs without KB features; `/chat` still works.
+If `DATABASE_URL` is unset, the app runs without KB / CRM DB features. `/chat` still works when `OPENAI_API_KEY` is set; without it, `/chat` returns **503** with a clear message.
 
 ## Admin API (requires `Authorization: Bearer <jwt>`)
 
@@ -93,6 +107,7 @@ If `DATABASE_URL` is unset, the app runs without KB features; `/chat` still work
 | POST | `/api/admin/auth/login` | Body: `{ "email", "password" }` |
 | GET | `/api/admin/auth/me` | Current admin |
 | GET | `/api/admin/stats` | Dashboard charts data |
+| GET | `/api/admin/chat-events` | Paginated `chat_events` (limit, offset query params) |
 | GET | `/api/admin/knowledge` | List entries |
 | GET | `/api/admin/knowledge/:id` | One entry |
 | POST | `/api/admin/knowledge` | Create |
@@ -120,18 +135,20 @@ cd backend
 npm start   # or npm run dev with nodemon
 ```
 
-Terminal 2 — Vite (proxies `/chat` and optionally add `/health`):
+Terminal 2 — Vite (proxies `/chat`, `/api`, `/health` → `http://127.0.0.1:3000` by default):
 
 ```bash
 cd frontend
 npm run dev
 ```
 
+Override proxy target if needed: `VITE_DEV_PROXY_TARGET=http://127.0.0.1:4000 npm run dev` (see `frontend/vite.config.js`).
+
 Open the URL Vite prints (e.g. `http://localhost:5173`).
 
 ## Repo layout
 
 - `backend/server.js` — Express, `/chat`, admin routes, static `/` and `/admin`
-- `backend/schema.sql` — Postgres schema for Neon
+- `backend/schema.sql` — Postgres schema (Supabase / Neon / any Postgres)
 - `admin/` — React admin (login, dashboard charts, CRUD knowledge)
 - `frontend/` — Customer chat UI

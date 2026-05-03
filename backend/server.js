@@ -4,7 +4,13 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const OpenAI = require('openai');
-const { fetchActiveKnowledgeForPrompt, query, getPool, getDatabaseHostFromEnv } = require('./db');
+const {
+  fetchActiveKnowledgeForPrompt,
+  query,
+  getPool,
+  getDatabaseHostFromEnv,
+  probeSupabasePoolerRegion,
+} = require('./db');
 const { router: adminRouter } = require('./routes/admin');
 const { router: publicRouter } = require('./routes/publicApi');
 const { runAssistantChat } = require('./lib/chatAssistant');
@@ -20,7 +26,7 @@ function dbPingHint(err, dbHost) {
       return (
         'Supabase direct host db.*.supabase.co is often IPv6-only (no public IPv4). Vercel/serverless frequently ' +
         'returns ENOTFOUND for it. Fix: in Supabase Dashboard use Connect → Transaction pooler, copy the Postgres URI ' +
-        '(host like aws-0-REGION.pooler.supabase.com, port 6543, user postgres.PROJECTREF, append ?pgbouncer=true), ' +
+        '(host like aws-0-REGION.pooler.supabase.com or aws-1-REGION.pooler.supabase.com, port 6543, user postgres.PROJECTREF, append ?pgbouncer=true), ' +
         'set that as DATABASE_URL on Vercel, redeploy.'
       );
     }
@@ -67,8 +73,15 @@ app.use((req, _res, next) => {
   next();
 });
 
-// ── OpenAI Client ──
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// ── OpenAI client (lazy — missing key must not break health/admin when only DB is tested)
+let openaiClient = null;
+function getOpenAI() {
+  const k = process.env.OPENAI_API_KEY;
+  const key = typeof k === 'string' ? k.trim() : '';
+  if (!key) return null;
+  if (!openaiClient) openaiClient = new OpenAI({ apiKey: key });
+  return openaiClient;
+}
 
 // ── CORS: allow browser calls from any origin (admin/chatbot on other hosts).
 // Uses dynamic reflection (origin: true) — works with Authorization header without credentials: 'include'.
@@ -86,6 +99,17 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
+
+// Direct `db.*:5432` → pooler rewrite needs the correct AWS region. Local `node server.js` also awaits
+// before listen; when this file is only `require`d (e.g. Vercel `api/index.js`), the first request runs it once.
+app.use(async (_req, _res, next) => {
+  try {
+    await probeSupabasePoolerRegion();
+  } catch (e) {
+    console.warn('[db] Pooler region probe:', e && e.message);
+  }
+  next();
+});
 
 // Resolve backend folder (server.js lives next to package.json; cwd may differ on Vercel).
 const backendRoot = fs.existsSync(path.join(__dirname, 'package.json'))
@@ -384,9 +408,14 @@ app.post('/chat', async (req, res) => {
 
     // Keep last 20 messages for context (10 exchanges)
     const recentMessages = messages.slice(-20);
+    const oa = getOpenAI();
+    if (!oa) {
+      return res.status(503).json({ error: 'Chat ist derzeit nicht konfiguriert (OPENAI_API_KEY fehlt).' });
+    }
+
     const systemContent = await buildFullSystemPrompt();
 
-    const reply = await runAssistantChat(openai, {
+    const reply = await runAssistantChat(oa, {
       baseSystemPrompt: systemContent,
       recentMessages,
     });
@@ -422,6 +451,7 @@ app.get('/health', async (req, res) => {
     status: 'ok',
     service: 'MisterWatch Chatbot',
     database: getPool() ? 'configured' : 'off',
+    openai: process.env.OPENAI_API_KEY && String(process.env.OPENAI_API_KEY).trim() ? 'configured' : 'off',
     timestamp: new Date().toISOString(),
   };
   // Note: some catch-all rewrites replace the query string, so `?db=1` may not arrive; use GET /health/db.
@@ -471,14 +501,21 @@ app.get('/health/db', async (req, res) => {
   res.json(payload);
 });
 
+const noStoreHtml = (res, filePath) => {
+  if (path.basename(filePath) === 'index.html') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  }
+};
+
 // Admin SPA — on Vercel, CDN serves `public/admin/**`; keep static + fallback for local dev and client-side routes that miss the CDN.
-app.use('/admin', express.static(adminDist));
+app.use('/admin', express.static(adminDist, { setHeaders: noStoreHtml }));
 app.use('/admin', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(adminDist, 'index.html'));
 });
 
 // Public React app — on Vercel, CDN serves `public/**` from `backend/public`; static middleware is for local dev.
-app.use(express.static(frontendDist));
+app.use(express.static(frontendDist, { setHeaders: noStoreHtml }));
 
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
@@ -489,6 +526,7 @@ app.use((req, res, next) => {
   ) {
     return next();
   }
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
     if (err) next(err);
   });
@@ -498,13 +536,34 @@ module.exports = app;
 
 // ── Start Server (skipped when imported e.g. by Vercel api/index.js) ──
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`
+  void (async () => {
+    try {
+      await probeSupabasePoolerRegion();
+    } catch (e) {
+      console.warn('[db] Pooler region probe:', e && e.message);
+    }
+
+    const server = app.listen(PORT, () => {
+      console.log(`
   ┌─────────────────────────────────────┐
   │   ⌚ MisterWatch Chatbot Server     │
   │   Running on http://localhost:${PORT}   │
   │   Status: Online & Ready            │
   └─────────────────────────────────────┘
   `);
-  });
+    });
+    server.on('error', (err) => {
+      if (err && err.code === 'EADDRINUSE') {
+        console.error(
+          `\n[server] Port ${PORT} is already in use (another node server or app).\n` +
+            `  Fix: stop the other process, or run on another port:\n` +
+            `    PowerShell:  $env:PORT=3001; node server.js\n` +
+            `  If using Vite admin/frontend dev proxy, set the same port:\n` +
+            `    $env:VITE_DEV_PROXY_TARGET=\"http://127.0.0.1:3001\"; npm run dev\n`
+        );
+        process.exit(1);
+      }
+      throw err;
+    });
+  })();
 }

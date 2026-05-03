@@ -1,11 +1,62 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
 
-const PRODUCTION_API_BASE = 'https://master-watch-yv9c.vercel.app';
-const envBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-const API_ROOT = envBase || (import.meta.env.PROD ? PRODUCTION_API_BASE : '');
-const API_URL = API_ROOT ? `${API_ROOT}/chat` : '/chat';
-const THEME_URL = API_ROOT ? `${API_ROOT}/api/public/chatbot-theme` : '/api/public/chatbot-theme';
+/**
+ * - Vite dev: `VITE_API_URL` empty → relative URLs → dev proxy to local API.
+ * - Production build opened at http://localhost:3000 (Express monolith): **ignore** baked `VITE_API_URL`
+ *   pointing at Vercel — use same-origin `/chat` so you never get CORS to production by mistake.
+ * - Production build at localhost on another port (e.g. vite preview): use local API port 3000.
+ * - Real deploy: use `VITE_API_URL` only when the widget is on a different origin than the API.
+ */
+const DEFAULT_LOCAL_API = 'http://127.0.0.1:3000';
+
+function isLoopbackHostname(hostname) {
+  if (!hostname) return false;
+  const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, '');
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+}
+
+function stripRemoteWhenLocalhost(origin) {
+  if (typeof window === 'undefined') return origin;
+  if (!isLoopbackHostname(window.location.hostname)) return origin;
+  const o = String(origin || '').trim();
+  if (!o) return o;
+  try {
+    const u = new URL(o);
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return origin;
+    return '';
+  } catch {
+    return origin;
+  }
+}
+
+function getApiRoot() {
+  const env = String(import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
+
+  if (import.meta.env.DEV) {
+    return stripRemoteWhenLocalhost(env);
+  }
+
+  // Production bundle: never use baked VITE_API_URL (e.g. Vercel) when the page is opened on loopback.
+  if (typeof window !== 'undefined' && isLoopbackHostname(window.location.hostname)) {
+    const port = String(window.location.port || '');
+    if (port === '3000') return '';
+    return DEFAULT_LOCAL_API;
+  }
+
+  if (env) return env;
+  return '';
+}
+
+function getChatUrl() {
+  const r = getApiRoot();
+  return r ? `${r}/chat` : '/chat';
+}
+
+function getThemeUrl() {
+  const r = getApiRoot();
+  return r ? `${r}/api/public/chatbot-theme` : '/api/public/chatbot-theme';
+}
 
 const CHAT_STORAGE = 'mw_chat_state_v3';
 const HISTORY_CAP = 20;
@@ -100,7 +151,7 @@ export default function App() {
     let cancel = false;
     (async () => {
       try {
-        const r = await fetch(THEME_URL);
+        const r = await fetch(getThemeUrl());
         const data = await r.json();
         if (!cancel && data.theme) applyThemeToRoot(data.theme);
       } catch {
@@ -157,7 +208,7 @@ export default function App() {
       setIsWaiting(true);
 
       try {
-        const response = await fetch(API_URL, {
+        const response = await fetch(getChatUrl(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messages: conversationHistoryRef.current }),

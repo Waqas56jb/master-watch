@@ -1,6 +1,11 @@
 const dns = require('dns');
 const { Pool } = require('pg');
 
+/** Set after successful `probeSupabasePoolerRegion()` so `DATABASE_URL` direct → pooler rewrite uses the right host. */
+let resolvedPoolerRegion = null;
+/** `aws-0` or `aws-1` — Supabase Connect shows `aws-1-REGION.pooler.supabase.com` for many projects; `aws-0` is still used elsewhere. */
+let resolvedPoolerAwsPrefix = null;
+
 // Supabase direct `db.*.supabase.co` often has **no IPv4 (A) record** — only AAAA. Forcing `ipv4first` makes
 // `dns.lookup` / pg fail with ENOTFOUND on IPv4-only stacks. Default: verbatim order (IPv6 works when offered).
 // Set DATABASE_IPV4_FIRST=true only if your DB host has A records and IPv6 causes timeouts.
@@ -31,9 +36,166 @@ function normalizeDatabaseUrl(raw) {
   return s.trim();
 }
 
+let supabasePoolerRewriteLogged = false;
+
+const DEFAULT_REGION_CANDIDATES = [
+  'ap-northeast-1',
+  'eu-central-1',
+  'us-east-1',
+  'ap-south-1',
+  'eu-west-1',
+  'us-west-1',
+  'ap-southeast-1',
+  'eu-west-2',
+  'us-west-2',
+  'ca-central-1',
+  'sa-east-1',
+  'ap-northeast-2',
+  'eu-north-1',
+];
+
+/** Try `aws-1` first — matches current Supabase dashboard “Transaction pooler” strings. */
+const DEFAULT_POOLER_AWS_PREFIXES = ['aws-1', 'aws-0'];
+
+function normalizePoolerAwsPrefix(raw) {
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'aws-0' || s === '0') return 'aws-0';
+  if (s === 'aws-1' || s === '1') return 'aws-1';
+  return null;
+}
+
+function parseSupabaseDirectDbUrl(connectionString) {
+  if (!connectionString) return null;
+  const normalized = connectionString.replace(/^postgres:\/\//i, 'postgresql://');
+  let u;
+  try {
+    u = new URL(normalized);
+  } catch {
+    return null;
+  }
+  const m = /^db\.([^.]+)\.supabase\.co$/i.exec(u.hostname || '');
+  if (!m) return null;
+  if (String(u.port || '5432') !== '5432') return null;
+  return { ref: m[1], password: u.password || '', pathname: u.pathname || '/postgres', userOriginal: u.username };
+}
+
+function buildPoolerConnectionString(ref, password, pathname, region, awsPrefix = 'aws-0') {
+  const r = String(region).trim().replace(/[^a-z0-9-]/gi, '') || 'eu-central-1';
+  const ap = awsPrefix === 'aws-1' ? 'aws-1' : 'aws-0';
+  const u = new URL('postgresql://x:y@host:6543/postgres');
+  u.hostname = `${ap}-${r}.pooler.supabase.com`;
+  u.port = '6543';
+  u.username = `postgres.${ref}`;
+  u.password = password;
+  u.pathname = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  u.search = '';
+  u.searchParams.set('pgbouncer', 'true');
+  return u.toString().replace(/^postgresql:/i, 'postgres:');
+}
+
+/**
+ * Supabase direct `db.<ref>.supabase.co:5432` is often IPv6-only; rewrite to Transaction pooler unless disabled.
+ * Host: `{aws-0|aws-1}-{region}.pooler.supabase.com` from probe / env (dashboard may use aws-1).
+ */
+function maybeRewriteSupabaseDirectToPooler(connectionString) {
+  if (process.env.SUPABASE_AUTO_POOLER === 'false') return connectionString;
+  if (!connectionString) return connectionString;
+  const parsed = parseSupabaseDirectDbUrl(connectionString);
+  if (!parsed) return connectionString;
+
+  const regionRaw =
+    resolvedPoolerRegion ||
+    (process.env.SUPABASE_POOLER_REGION && String(process.env.SUPABASE_POOLER_REGION).trim()) ||
+    'eu-central-1';
+  const region = String(regionRaw).replace(/[^a-z0-9-]/gi, '') || 'eu-central-1';
+
+  const awsPrefix =
+    resolvedPoolerAwsPrefix ||
+    normalizePoolerAwsPrefix(process.env.SUPABASE_POOLER_AWS_PREFIX) ||
+    'aws-1';
+
+  const out = buildPoolerConnectionString(parsed.ref, parsed.password, parsed.pathname, region, awsPrefix);
+  if (!supabasePoolerRewriteLogged) {
+    supabasePoolerRewriteLogged = true;
+    console.warn(
+      `[db] Supabase direct host rewritten to Transaction pooler (${awsPrefix}-${region}.pooler.supabase.com). ` +
+        `Wrong host/region → "Tenant or user not found". Probe tries aws-1 and aws-0; or set SUPABASE_POOLER_REGION / ` +
+        `SUPABASE_POOLER_AWS_PREFIX, or SUPABASE_AUTO_POOLER=false and paste the URI from Supabase → Connect.`
+    );
+  }
+  return out;
+}
+
+let supabasePoolerProbeSingleton = null;
+
+/**
+ * When DATABASE_URL uses direct `db.*:5432`, try common pooler regions until `SELECT 1` succeeds.
+ * Sets `resolvedPoolerRegion` for rewrite. Safe to await multiple times (one shared run per process).
+ */
+async function probeSupabasePoolerRegion() {
+  if (supabasePoolerProbeSingleton) return supabasePoolerProbeSingleton;
+  supabasePoolerProbeSingleton = (async () => {
+    try {
+      if (process.env.SUPABASE_AUTO_POOLER === 'false') return;
+      const normalized = normalizeDatabaseUrl(process.env.DATABASE_URL || '');
+      const parsed = parseSupabaseDirectDbUrl(normalized);
+      if (!parsed) return;
+
+      const envFirst = (process.env.SUPABASE_POOLER_REGION || '').trim().replace(/[^a-z0-9-]/gi, '');
+      const candidates = [...(envFirst ? [envFirst] : []), ...DEFAULT_REGION_CANDIDATES].filter(
+        (r, i, a) => r && a.indexOf(r) === i
+      );
+
+      const envAws = normalizePoolerAwsPrefix(process.env.SUPABASE_POOLER_AWS_PREFIX);
+      const awsPrefixes = envAws ? [envAws] : DEFAULT_POOLER_AWS_PREFIXES;
+
+      const isProdSsl =
+        process.env.NODE_ENV === 'production' || process.env.DATABASE_SSL !== 'false';
+
+      for (const region of candidates) {
+        for (const awsp of awsPrefixes) {
+          const cs = buildPoolerConnectionString(parsed.ref, parsed.password, parsed.pathname, region, awsp);
+          const testPool = new Pool({
+            connectionString: cs,
+            ssl: isProdSsl ? { rejectUnauthorized: false } : false,
+            max: 1,
+            idleTimeoutMillis: 5000,
+            connectionTimeoutMillis: 8000,
+            prepareThreshold: 0,
+          });
+          try {
+            await testPool.query('SELECT 1 AS ok');
+            await testPool.end();
+            resolvedPoolerRegion = region;
+            resolvedPoolerAwsPrefix = awsp;
+            console.warn(`[db] Using Supabase pooler: ${awsp}-${region}.pooler.supabase.com`);
+            return;
+          } catch (e) {
+            await testPool.end().catch(() => {});
+          }
+        }
+      }
+      console.warn(
+        '[db] Could not auto-detect pooler host. Set SUPABASE_POOLER_REGION and optional SUPABASE_POOLER_AWS_PREFIX=aws-1 ' +
+          'from Supabase → Connect, or paste the full Transaction pooler URI into DATABASE_URL and set SUPABASE_AUTO_POOLER=false.'
+      );
+    } catch (e) {
+      console.warn('[db] Pooler region probe failed:', e && e.message);
+    }
+  })();
+  return supabasePoolerProbeSingleton;
+}
+
+function getResolvedConnectionString() {
+  const normalized = normalizeDatabaseUrl(process.env.DATABASE_URL || '');
+  if (!normalized) return '';
+  return maybeRewriteSupabaseDirectToPooler(normalized);
+}
+
 /** Host only (for /health/db); never includes password. Returns null if URL cannot be parsed. */
 function getDatabaseHostFromEnv() {
-  const s = normalizeDatabaseUrl(process.env.DATABASE_URL || '');
+  const s = getResolvedConnectionString();
   if (!s) return null;
   try {
     const u = new URL(s.replace(/^postgres:\/\//i, 'postgresql://'));
@@ -44,13 +206,13 @@ function getDatabaseHostFromEnv() {
 }
 
 function getPool() {
-  const raw = process.env.DATABASE_URL;
-  const connectionString = typeof raw === 'string' ? normalizeDatabaseUrl(raw) : '';
+  const connectionString = getResolvedConnectionString();
   if (!connectionString) return null;
   if (!pool) {
     const isProdSsl =
       process.env.NODE_ENV === 'production' || process.env.DATABASE_SSL !== 'false';
     const onVercel = Boolean(process.env.VERCEL);
+    const usesSupabasePooler = /pooler\.supabase\.com/i.test(connectionString);
     pool = new Pool({
       connectionString,
       ssl: isProdSsl ? { rejectUnauthorized: false } : false,
@@ -58,7 +220,7 @@ function getPool() {
       idleTimeoutMillis: onVercel ? 10_000 : 30_000,
       // Cold start + DNS + TLS to Supabase can exceed 8s on serverless.
       connectionTimeoutMillis: onVercel ? 20000 : 8000,
-      ...(onVercel ? { prepareThreshold: 0 } : {}),
+      ...(onVercel || usesSupabasePooler ? { prepareThreshold: 0 } : {}),
     });
   }
   return pool;
@@ -284,6 +446,7 @@ async function insertFeedback(opts) {
 module.exports = {
   getPool,
   getDatabaseHostFromEnv,
+  probeSupabasePoolerRegion,
   query,
   fetchActiveKnowledgeForPrompt,
   getDashboardStats,

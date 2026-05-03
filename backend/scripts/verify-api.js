@@ -3,7 +3,7 @@
  *
  * Usage:
  *   node scripts/verify-api.js
- *   node scripts/verify-api.js https://master-watch-yv9c.vercel.app
+ *   node scripts/verify-api.js https://your-api.vercel.app
  *
  * Optional login + protected routes (recommended):
  *   set ADMIN_TEST_EMAIL   set ADMIN_TEST_PASSWORD
@@ -39,6 +39,7 @@ async function http(method, path, { jsonBody, token, headers: extra = {} } = {})
 function labelPass(name, r) {
   const bits = [r.status, r.ok ? 'OK' : 'FAIL'];
   if (r.json && typeof r.json === 'object') {
+    if (r.json.openai) bits.push(`openai:${r.json.openai}`);
     if (r.json.database_ping) bits.push(`db:${r.json.database_ping}`);
     if (r.json.database_error) bits.push(String(r.json.database_error).slice(0, 100));
     if (r.json.error) bits.push(String(r.json.error).slice(0, 120));
