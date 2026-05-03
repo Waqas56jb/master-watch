@@ -141,10 +141,26 @@ export default function App() {
   const [entries, setEntries] = useState([]);
   const [input, setInput] = useState('');
   const [isWaiting, setIsWaiting] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const conversationHistoryRef = useRef([]);
   const messagesAreaRef = useRef(null);
   const textareaRef = useRef(null);
   const hydratedRef = useRef(false);
+  const recognitionRef = useRef(null);
+
+  const speechSupported =
+    typeof window !== 'undefined' && Boolean(getSpeechRecognitionCtor());
+
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.stop?.();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
+    };
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     const el = messagesAreaRef.current;
