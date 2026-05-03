@@ -1,0 +1,459 @@
+/* ════════════════════════════════════════════════════
+   ARIA Voice Agent — Modal Version
+   Card centered over chat, not full-screen takeover
+   ════════════════════════════════════════════════════ */
+
+/* ── Backdrop ─────────────────────────────────────── */
+.va-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: va-backdropIn 0.25s ease both;
+}
+@keyframes va-backdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Modal card ───────────────────────────────────── */
+.va-modal {
+  --c1: #00e5ff;
+  --c2: #0062ff;
+  --bg: #040810;
+
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 24px;
+  background: #040810;
+  border: 1px solid rgba(0,229,255,0.12);
+  box-shadow:
+    0 0 0 1px rgba(0,229,255,0.08),
+    0 24px 80px rgba(0,0,0,0.8),
+    0 0 60px rgba(0,100,255,0.15);
+  animation: va-modalIn 0.35s cubic-bezier(.23,1,.32,1) both;
+  scrollbar-width: none;
+}
+.va-modal::-webkit-scrollbar { display: none; }
+
+@keyframes va-modalIn {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── State themes (on .va-modal) ─────────────────── */
+.va-modal.s-listen { --c1: #00ffaa; --c2: #00ff77; }
+.va-modal.s-think  { --c1: #bf60ff; --c2: #8000ff; }
+.va-modal.s-speak  { --c1: #ff6b35; --c2: #ff2090; }
+
+/* ── Hex grid inside card ─────────────────────────── */
+.va-hex-bg {
+  position: absolute;
+  inset: 0;
+  opacity: 0.02;
+  pointer-events: none;
+  border-radius: 24px;
+  overflow: hidden;
+  background-image:
+    repeating-linear-gradient(60deg,  rgba(0,229,255,0.4) 0, rgba(0,229,255,0.4) 1px, transparent 0, transparent 50%),
+    repeating-linear-gradient(120deg, rgba(0,229,255,0.4) 0, rgba(0,229,255,0.4) 1px, transparent 0, transparent 50%),
+    repeating-linear-gradient(180deg, rgba(0,229,255,0.4) 0, rgba(0,229,255,0.4) 1px, transparent 0, transparent 50%);
+  background-size: 28px 48px;
+}
+
+/* ── Corner brackets (inside card) ───────────────── */
+.va-bracket {
+  position: absolute;
+  width: 20px; height: 20px;
+  pointer-events: none;
+  opacity: 0.3;
+}
+.va-bracket::before, .va-bracket::after {
+  content: '';
+  position: absolute;
+  background: var(--c1);
+  transition: background 1s;
+}
+.va-bracket::before { width: 100%; height: 1px; top: 0; }
+.va-bracket::after  { width: 1px; height: 100%; top: 0; }
+.va-bracket.va-tl { top: 16px; left: 16px; }
+.va-bracket.va-tr { top: 16px; right: 16px; transform: scaleX(-1); }
+.va-bracket.va-bl { bottom: 16px; left: 16px; transform: scaleY(-1); }
+.va-bracket.va-br { bottom: 16px; right: 16px; transform: scale(-1); }
+
+/* ── Close button ─────────────────────────────────── */
+.va-close-btn {
+  position: absolute;
+  top: 14px; right: 14px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.5);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  z-index: 10;
+}
+.va-close-btn:hover {
+  background: rgba(255,80,80,0.2);
+  border-color: rgba(255,80,80,0.4);
+  color: #f87171;
+}
+
+/* ── Shell ────────────────────────────────────────── */
+.va-shell {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 20px 24px;
+  gap: 0;
+  user-select: none;
+}
+
+/* ── Identity ─────────────────────────────────────── */
+.va-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  animation: va-fadeUp 0.6s cubic-bezier(.23,1,.32,1) 0.1s both;
+}
+.va-identity-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--c1);
+  box-shadow: 0 0 8px var(--c1);
+  animation: va-identityPulse 2s ease-in-out infinite;
+  transition: background 1s, box-shadow 1s;
+}
+@keyframes va-identityPulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%     { opacity: 0.4; transform: scale(0.6); }
+}
+.va-identity-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 5px;
+  color: rgba(255,255,255,0.85);
+  text-transform: uppercase;
+}
+.va-identity-ver {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: rgba(0,229,255,0.4);
+  font-family: 'DM Mono', monospace;
+}
+
+/* ── Orb stage (smaller for modal) ───────────────── */
+.va-orb-stage {
+  position: relative;
+  width: 200px; height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: va-fadeUp 0.6s cubic-bezier(.23,1,.32,1) 0.2s both;
+}
+.va-orb-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  border-radius: 50%;
+}
+
+/* Atmospheric rings */
+.va-atmo-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid;
+  top: 50%; left: 50%;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.va-atmo-1 {
+  width: 230px; height: 230px;
+  margin: -115px 0 0 -115px;
+  border-color: rgba(0,229,255,0.08);
+  animation: va-atmoSpin1 20s linear infinite;
+}
+.va-atmo-2 {
+  width: 265px; height: 265px;
+  margin: -132px 0 0 -132px;
+  border-color: rgba(0,98,255,0.07);
+  animation: va-atmoSpin2 35s linear infinite;
+}
+@keyframes va-atmoSpin1 { to { transform: rotate(360deg); } }
+@keyframes va-atmoSpin2 { to { transform: rotate(-360deg); } }
+.va-atmo-1::before { content:''; position:absolute; width:5px;height:5px;border-radius:50%;top:-2.5px;left:50%;margin-left:-2.5px; background:rgba(0,229,255,0.6);box-shadow:0 0 6px rgba(0,229,255,0.8); }
+.va-atmo-2::before { content:''; position:absolute; width:4px;height:4px;border-radius:50%;top:-2px;left:50%;margin-left:-2px; background:rgba(0,98,255,0.5); box-shadow:0 0 6px rgba(0,98,255,0.7); }
+
+/* Wave ring SVG */
+.va-wave-ring {
+  position: absolute;
+  width: 100%; height: 100%;
+  top: 0; left: 0;
+  pointer-events: none;
+}
+
+/* Glass core — smaller */
+.va-glass-core {
+  position: absolute;
+  width: 115px; height: 115px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%,
+    rgba(255,255,255,0.18) 0%,
+    rgba(0,130,220,0.35) 30%,
+    rgba(0,30,80,0.85) 65%,
+    rgba(1,5,20,0.98) 100%
+  );
+  box-shadow:
+    0 0 0 1px rgba(0,229,255,0.15),
+    0 0 30px rgba(0,130,255,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    inset 0 0 30px rgba(0,229,255,0.08);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+  transition: box-shadow 1s ease, background 1s ease;
+}
+.va-glass-core::before {
+  content: '';
+  position: absolute;
+  top: 8%; left: 15%;
+  width: 40%; height: 28%;
+  background: radial-gradient(ellipse, rgba(255,255,255,0.45) 0%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(5px);
+  transform: rotate(-15deg);
+}
+.va-glass-core::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: conic-gradient(from 0deg, transparent 0%, rgba(0,229,255,0.04) 25%, transparent 50%, rgba(0,98,255,0.04) 75%, transparent 100%);
+  animation: va-conicSpin 8s linear infinite;
+  border-radius: 50%;
+}
+@keyframes va-conicSpin { to { transform: rotate(360deg); } }
+
+.va-core-pulse {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, rgba(0,229,255,0.9) 50%, transparent 100%);
+  filter: blur(3px);
+  animation: va-innerPulse 1.8s ease-in-out infinite;
+  transition: background 1s;
+}
+@keyframes va-innerPulse {
+  0%,100% { transform: translate(-50%,-50%) scale(1);   opacity: 0.8; }
+  50%     { transform: translate(-50%,-50%) scale(2.2); opacity: 1;   }
+}
+.va-core-scan {
+  position: absolute;
+  width: 100%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.6), transparent);
+  animation: va-scanMove 3s ease-in-out infinite;
+}
+@keyframes va-scanMove {
+  0%   { top: 10%; opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { top: 90%; opacity: 0; }
+}
+
+/* ── Status ───────────────────────────────────────── */
+.va-status-wrap {
+  margin-top: 20px;
+  text-align: center;
+  animation: va-fadeUp 0.6s cubic-bezier(.23,1,.32,1) 0.3s both;
+}
+.va-state-indicator {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-bottom: 6px;
+}
+.va-state-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--c1);
+  box-shadow: 0 0 6px var(--c1);
+  animation: va-stateDot 1s ease-in-out infinite;
+  transition: background 1s, box-shadow 1s;
+}
+@keyframes va-stateDot { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+.va-state-name {
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: rgba(0,229,255,0.5);
+  text-transform: uppercase;
+  transition: color 1s;
+  font-family: 'DM Mono', monospace;
+}
+.va-big-status {
+  font-family: 'Syne', sans-serif;
+  font-size: 22px; font-weight: 800;
+  letter-spacing: 1px;
+  color: #fff;
+  line-height: 1;
+  text-shadow: 0 0 24px rgba(0,229,255,0.5);
+  transition: text-shadow 1s;
+  min-height: 28px;
+}
+
+/* ── Visualizer bars ──────────────────────────────── */
+.va-viz-wrap {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 40px;
+  animation: va-fadeUp 0.6s cubic-bezier(.23,1,.32,1) 0.35s both;
+}
+.va-vbar {
+  width: 3px; border-radius: 3px;
+  background: var(--c1);
+  opacity: 0.7;
+  transition: background 1s;
+  animation: va-vbarIdle 2s ease-in-out infinite;
+  animation-play-state: paused;
+  height: 4px;
+}
+.va-vbar:nth-child(odd)  { animation-delay: calc(var(--i) * 0.07s); }
+.va-vbar:nth-child(even) { animation-delay: calc(var(--i) * 0.05s + 0.3s); }
+@keyframes va-vbarIdle {
+  0%,100% { height: 4px;      opacity: 0.4; }
+  50%     { height: var(--h); opacity: 0.9; }
+}
+.va-viz-wrap.active .va-vbar { animation-play-state: running; }
+
+/* ── Ticker ───────────────────────────────────────── */
+.va-ticker-wrap {
+  margin-top: 14px;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  height: 18px;
+  animation: va-fadeUp 0.6s cubic-bezier(.23,1,.32,1) 0.4s both;
+}
+.va-ticker-wrap::before, .va-ticker-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 32px; z-index: 2;
+  pointer-events: none;
+}
+.va-ticker-wrap::before { left:  0; background: linear-gradient(90deg,  #040810, transparent); }
+.va-ticker-wrap::after  { right: 0; background: linear-gradient(-90deg, #040810, transparent); }
+.va-ticker {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: rgba(255,255,255,0.4);
+  white-space: nowrap;
+  animation: va-tickerScroll 14s linear infinite;
+  display: inline-block;
+  font-family: 'DM Mono', monospace;
+}
+@keyframes va-tickerScroll {
+  0%   { transform: translateX(360px); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ── Controls ─────────────────────────────────────── */
+.va-control-ring {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: va-fadeUp 0.6s cubic-bezier(.23,1,.32,1) 0.45s both;
+}
+.va-ctrl-btn {
+  position: relative;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,229,255,0.2);
+  background: rgba(0,229,255,0.04);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.25s ease;
+  overflow: hidden;
+  color: rgba(0,229,255,0.7);
+}
+.va-ctrl-btn:hover { border-color: rgba(0,229,255,0.6); transform: scale(1.1); box-shadow: 0 0 16px rgba(0,229,255,0.2); }
+.va-ctrl-btn:active { transform: scale(0.93); }
+.va-ctrl-main {
+  width: 60px; height: 60px;
+  border-color: rgba(0,229,255,0.35);
+  box-shadow: 0 0 0 6px rgba(0,229,255,0.04), 0 0 24px rgba(0,229,255,0.1);
+  color: var(--c1);
+}
+.va-ctrl-main:hover { box-shadow: 0 0 0 10px rgba(0,229,255,0.06), 0 0 32px rgba(0,229,255,0.25); }
+
+/* ── Stats ────────────────────────────────────────── */
+.va-stats-row {
+  margin-top: 18px;
+  display: flex;
+  width: 100%;
+  border: 1px solid rgba(0,229,255,0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(6,12,30,0.6);
+  animation: va-fadeUp 0.6s cubic-bezier(.23,1,.32,1) 0.5s both;
+}
+.va-stat {
+  flex: 1;
+  padding: 10px 0;
+  text-align: center;
+  border-right: 1px solid rgba(0,229,255,0.08);
+}
+.va-stat:last-child { border-right: none; }
+.va-stat-val {
+  font-family: 'Syne', sans-serif;
+  font-size: 13px; font-weight: 700;
+  color: var(--c1);
+  text-shadow: 0 0 10px rgba(0,229,255,0.5);
+  transition: color 1s;
+  letter-spacing: 0.5px;
+}
+.va-stat-key {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,0.2);
+  text-transform: uppercase;
+  margin-top: 2px;
+  font-family: 'DM Mono', monospace;
+}
+
+/* ── ORB STATE GLOW ───────────────────────────────── */
+.va-modal.s-listen .va-glass-core {
+  background: radial-gradient(circle at 38% 32%, rgba(255,255,255,0.18) 0%, rgba(0,220,130,0.4) 30%, rgba(0,60,30,0.85) 65%, rgba(1,5,10,0.98) 100%);
+  box-shadow: 0 0 0 1px rgba(0,255,170,0.2), 0 0 40px rgba(0,255,170,0.5), 0 0 80px rgba(0,200,100,0.15), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 0 30px rgba(0,255,170,0.1);
+}
+.va-modal.s-think .va-glass-core {
+  background: radial-gradient(circle at 38% 32%, rgba(255,255,255,0.18) 0%, rgba(140,0,255,0.4) 30%, rgba(40,0,80,0.85) 65%, rgba(5,1,20,0.98) 100%);
+  box-shadow: 0 0 0 1px rgba(191,96,255,0.2), 0 0 40px rgba(191,96,255,0.5), 0 0 80px rgba(128,0,255,0.15), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 0 30px rgba(191,96,255,0.1);
+}
+.va-modal.s-speak .va-glass-core {
+  background: radial-gradient(circle at 38% 32%, rgba(255,255,255,0.22) 0%, rgba(255,90,0,0.5) 30%, rgba(80,10,0,0.85) 65%, rgba(15,2,1,0.98) 100%);
+  box-shadow: 0 0 0 1px rgba(255,107,53,0.2), 0 0 40px rgba(255,107,53,0.6), 0 0 80px rgba(255,32,144,0.15), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 0 30px rgba(255,107,53,0.15);
+}
+
+/* ── Entry animation ──────────────────────────────── */
+@keyframes va-fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

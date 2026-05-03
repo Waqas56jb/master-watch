@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
+import VoiceAgent from './components/VoiceAgent.jsx';
 
 /**
  * API-Basis für Chat und Theme:
@@ -130,37 +131,18 @@ function getTime() {
   return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-function getSpeechRecognitionCtor() {
-  if (typeof window === 'undefined') return null;
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
-}
-
 export default function App() {
   const [welcomeTime] = useState(() => getTime());
   const [showQuickReplies, setShowQuickReplies] = useState(true);
   const [entries, setEntries] = useState([]);
   const [input, setInput] = useState('');
   const [isWaiting, setIsWaiting] = useState(false);
-  const [isListening, setIsListening] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const conversationHistoryRef = useRef([]);
+  const chatInFlightRef = useRef(false);
   const messagesAreaRef = useRef(null);
   const textareaRef = useRef(null);
   const hydratedRef = useRef(false);
-  const recognitionRef = useRef(null);
-
-  const speechSupported =
-    typeof window !== 'undefined' && Boolean(getSpeechRecognitionCtor());
-
-  useEffect(() => {
-    return () => {
-      try {
-        recognitionRef.current?.stop?.();
-      } catch {
-        /* ignore */
-      }
-      recognitionRef.current = null;
-    };
-  }, []);
 
   const scrollToBottom = useCallback(() => {
     const el = messagesAreaRef.current;
@@ -208,80 +190,81 @@ export default function App() {
     }
   }, []);
 
+  const fetchChatReply = useCallback(async (text) => {
+    const t = String(text || '').trim();
+    if (!t) return '';
+    if (chatInFlightRef.current) {
+      return 'Bitte einen Moment — die vorherige Anfrage läuft noch.';
+    }
+    chatInFlightRef.current = true;
+    setShowQuickReplies(false);
+    setIsWaiting(true);
+
+    const userTime = getTime();
+    conversationHistoryRef.current = [
+      ...conversationHistoryRef.current,
+      { role: 'user', content: t },
+    ].slice(-HISTORY_CAP);
+
+    setEntries((prev) => {
+      const next = [...prev, { role: 'user', text: t, time: userTime }];
+      persistChat(next, conversationHistoryRef.current);
+      return next;
+    });
+
+    try {
+      const response = await fetch(getChatUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: conversationHistoryRef.current }),
+      });
+      const data = await response.json();
+
+      if (data.reply) {
+        conversationHistoryRef.current = [
+          ...conversationHistoryRef.current,
+          { role: 'assistant', content: data.reply },
+        ].slice(-HISTORY_CAP);
+        const botTime = getTime();
+        setEntries((prev) => {
+          const next = [...prev, { role: 'bot', text: data.reply, time: botTime }];
+          persistChat(next, conversationHistoryRef.current);
+          return next;
+        });
+        return data.reply;
+      }
+      const errMsg =
+        'Entschuldigung, es ist ein Fehler aufgetreten. Bitte versuche es gleich noch einmal.';
+      setEntries((prev) => {
+        const next = [...prev, { role: 'bot', text: errMsg, time: getTime() }];
+        persistChat(next, conversationHistoryRef.current);
+        return next;
+      });
+      return errMsg;
+    } catch {
+      const errMsg =
+        'Verbindungsfehler. Bitte prüfe deine Internetverbindung und versuche es erneut.';
+      setEntries((prev) => {
+        const next = [...prev, { role: 'bot', text: errMsg, time: getTime() }];
+        persistChat(next, conversationHistoryRef.current);
+        return next;
+      });
+      return errMsg;
+    } finally {
+      chatInFlightRef.current = false;
+      setIsWaiting(false);
+    }
+  }, []);
+
   const sendMessage = useCallback(
     async (forcedText) => {
       const raw = forcedText !== undefined ? forcedText : input;
       const text = (typeof raw === 'string' ? raw : input).trim();
-      if (!text || isWaiting) return;
-
+      if (!text || chatInFlightRef.current) return;
       setInput('');
-      setShowQuickReplies(false);
-
-      const userTime = getTime();
-      conversationHistoryRef.current = [
-        ...conversationHistoryRef.current,
-        { role: 'user', content: text },
-      ].slice(-HISTORY_CAP);
-
-      setEntries((prev) => {
-        const next = [...prev, { role: 'user', text, time: userTime }];
-        persistChat(next, conversationHistoryRef.current);
-        return next;
-      });
-
-      setIsWaiting(true);
-
-      try {
-        const response = await fetch(getChatUrl(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: conversationHistoryRef.current }),
-        });
-        const data = await response.json();
-
-        if (data.reply) {
-          conversationHistoryRef.current = [
-            ...conversationHistoryRef.current,
-            { role: 'assistant', content: data.reply },
-          ].slice(-HISTORY_CAP);
-          const botTime = getTime();
-          setEntries((prev) => {
-            const next = [...prev, { role: 'bot', text: data.reply, time: botTime }];
-            persistChat(next, conversationHistoryRef.current);
-            return next;
-          });
-        } else {
-          setEntries((prev) => {
-            const next = [
-              ...prev,
-              {
-                role: 'bot',
-                text: 'Entschuldigung, es ist ein Fehler aufgetreten. Bitte versuche es gleich noch einmal.',
-                time: getTime(),
-              },
-            ];
-            persistChat(next, conversationHistoryRef.current);
-            return next;
-          });
-        }
-      } catch {
-        setEntries((prev) => {
-          const next = [
-            ...prev,
-            {
-              role: 'bot',
-              text: 'Verbindungsfehler. Bitte prüfe deine Internetverbindung und versuche es erneut.',
-              time: getTime(),
-            },
-          ];
-          persistChat(next, conversationHistoryRef.current);
-          return next;
-        });
-      } finally {
-        setIsWaiting(false);
-      }
+      await fetchChatReply(text);
     },
-    [input, isWaiting]
+    [input, fetchChatReply]
   );
 
   const sendQuick = (text) => {
@@ -295,62 +278,6 @@ export default function App() {
       sendMessage();
     }
   };
-
-  const toggleVoiceInput = useCallback(() => {
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor || isWaiting) return;
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {
-        /* ignore */
-      }
-      recognitionRef.current = null;
-      setIsListening(false);
-      return;
-    }
-
-    const rec = new Ctor();
-    rec.lang = 'de-DE';
-    rec.interimResults = false;
-    rec.continuous = false;
-    rec.maxAlternatives = 1;
-
-    rec.onresult = (event) => {
-      let text = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        if (event.results[i].isFinal) text += event.results[i][0].transcript;
-      }
-      const t = text.trim();
-      if (t) {
-        setInput((prev) => {
-          const p = (prev || '').trim();
-          return p ? `${p} ${t}` : t;
-        });
-      }
-    };
-
-    rec.onerror = () => {
-      recognitionRef.current = null;
-      setIsListening(false);
-    };
-
-    rec.onend = () => {
-      recognitionRef.current = null;
-      setIsListening(false);
-    };
-
-    try {
-      recognitionRef.current = rec;
-      rec.start();
-      setIsListening(true);
-      textareaRef.current?.focus();
-    } catch {
-      recognitionRef.current = null;
-      setIsListening(false);
-    }
-  }, [isWaiting]);
 
   return (
     <div className="app-root">
@@ -441,18 +368,12 @@ export default function App() {
             <div className="composer-actions">
               <button
                 type="button"
-                className={`mic-btn${isListening ? ' mic-btn--active' : ''}`}
-                disabled={isWaiting || !speechSupported}
-                onClick={toggleVoiceInput}
-                aria-label={isListening ? 'Spracheingabe beenden' : 'Spracheingabe'}
-                aria-pressed={isListening}
-                title={
-                  !speechSupported
-                    ? 'Spracheingabe in diesem Browser nicht verfügbar'
-                    : isListening
-                      ? 'Tippen zum Beenden'
-                      : 'Tippen und sprechen (Deutsch)'
-                }
+                className={`mic-btn${voiceOpen ? ' mic-btn--active' : ''}`}
+                disabled={isWaiting}
+                onClick={() => setVoiceOpen(true)}
+                aria-label="Sprachassistent"
+                aria-pressed={voiceOpen}
+                title="Sprachassistent öffnen"
               >
                 <svg
                   width="20"
@@ -502,6 +423,13 @@ export default function App() {
         </div>
 
       </div>
+
+      {voiceOpen && (
+        <VoiceAgent
+          fetchChatReply={fetchChatReply}
+          onClose={() => setVoiceOpen(false)}
+        />
+      )}
     </div>
   );
 }
