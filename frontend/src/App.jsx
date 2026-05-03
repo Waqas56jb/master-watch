@@ -73,12 +73,15 @@ Du kannst:
 **Womit kann ich dir helfen?**`;
 
 const QUICK_ACTIONS = [
-  { label: '📦 Buchung', text: 'Ich möchte eine Uhr buchen oder reservieren. Welche Angaben benötigt ihr von mir?' },
+  {
+    label: '📲Bestellung aufgeben',
+    text: 'Ich möchte eine Bestellung aufgeben. Welche Angaben benötigt ihr von mir?',
+  },
   { label: '💬 Kundendienst', text: 'Ich habe ein Problem und benötige Hilfe vom Kundendienst.' },
   { label: '⭐ Bewertung', text: 'Ich möchte eine Bewertung zum Shop abgeben.' },
   { label: '🏅 Qualitäten', text: 'Welche Qualitätsstufen gibt es?' },
   { label: '💰 Preise', text: 'Was kosten eure Uhren?' },
-  { label: '📦 Lieferzeit', text: 'Wie lange dauert die Lieferung?' },
+  { label: '🚚Lieferzeit', text: 'Wie lange dauert die Lieferung?' },
   { label: '💳 Zahlung', text: 'Welche Zahlungsarten bietet ihr an?' },
 ];
 
@@ -125,6 +128,11 @@ function persistChat(entries, history) {
 
 function getTime() {
   return new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getSpeechRecognitionCtor() {
+  if (typeof window === 'undefined') return null;
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
 export default function App() {
@@ -272,6 +280,62 @@ export default function App() {
     }
   };
 
+  const toggleVoiceInput = useCallback(() => {
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor || isWaiting) return;
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        /* ignore */
+      }
+      recognitionRef.current = null;
+      setIsListening(false);
+      return;
+    }
+
+    const rec = new Ctor();
+    rec.lang = 'de-DE';
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (event) => {
+      let text = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        if (event.results[i].isFinal) text += event.results[i][0].transcript;
+      }
+      const t = text.trim();
+      if (t) {
+        setInput((prev) => {
+          const p = (prev || '').trim();
+          return p ? `${p} ${t}` : t;
+        });
+      }
+    };
+
+    rec.onerror = () => {
+      recognitionRef.current = null;
+      setIsListening(false);
+    };
+
+    rec.onend = () => {
+      recognitionRef.current = null;
+      setIsListening(false);
+    };
+
+    try {
+      recognitionRef.current = rec;
+      rec.start();
+      setIsListening(true);
+      textareaRef.current?.focus();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+    }
+  }, [isWaiting]);
+
   return (
     <div className="app-root">
       <div className="chat-widget">
@@ -358,27 +422,62 @@ export default function App() {
                 disabled={isWaiting}
               />
             </div>
-            <button
-              type="button"
-              className="send-btn"
-              disabled={isWaiting}
-              onClick={() => sendMessage()}
-              aria-label="Senden"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <div className="composer-actions">
+              <button
+                type="button"
+                className={`mic-btn${isListening ? ' mic-btn--active' : ''}`}
+                disabled={isWaiting || !speechSupported}
+                onClick={toggleVoiceInput}
+                aria-label={isListening ? 'Spracheingabe beenden' : 'Spracheingabe'}
+                aria-pressed={isListening}
+                title={
+                  !speechSupported
+                    ? 'Spracheingabe in diesem Browser nicht verfügbar'
+                    : isListening
+                      ? 'Tippen zum Beenden'
+                      : 'Tippen und sprechen (Deutsch)'
+                }
               >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                  <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+                  <line x1="12" y1="18" x2="12" y2="22" />
+                  <line x1="8" y1="22" x2="16" y2="22" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="send-btn"
+                disabled={isWaiting}
+                onClick={() => sendMessage()}
+                aria-label="Senden"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="chat-footer">

@@ -260,12 +260,15 @@ app.use(express.static(frontendDist, { setHeaders: noStoreHtml }));
 
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (
-    req.path.startsWith('/api') ||
-    req.path.startsWith('/admin') ||
-    req.path.startsWith('/health')
-  ) {
+  const p = typeof req.path === 'string' ? req.path : '';
+  if (p.startsWith('/api') || p.startsWith('/health')) {
     return next();
+  }
+  if (p.startsWith('/admin')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.sendFile(path.join(adminDist, 'index.html'), (err) => {
+      if (err) next(err);
+    });
   }
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(frontendDist, 'index.html'), (err) => {

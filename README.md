@@ -1,6 +1,6 @@
 # master-watch
 
-MisterWatch customer chat: React frontend (Vite), **admin panel** (Vite), and Express backend. The chatbot uses a **fixed system prompt** in `backend/server.js` plus **optional knowledge** from **PostgreSQL** (e.g. Neon), managed in the admin UI.
+MisterWatch customer chat: React frontend (Vite), **admin panel** (Vite), and Express backend. The chatbot system text lives in **Postgres** (plus optional `knowledge_entries`), edited in the admin UI; Express assembles prompts at `/chat`.
 
 ## Setup
 
@@ -130,6 +130,10 @@ npm start
 ```
 
 Use `PORT` if needed (`PORT=3000`). Open `/` for the widget and **`/admin/`** for the dashboard.
+
+### Vercel: separate `admin/` or `frontend/` project (refresh / deep links)
+
+If the **Root Directory** is `admin/` or `frontend/` (not the monolithic `backend/`), keep the included **`vercel.json`** in that folder. It rewrites unknown paths to `index.html` so **browser refresh** on routes like `/dashboard` or `/chatbot-prompt` does not return **404 NOT_FOUND**. Redeploy after pulling.
 
 ## Run development (chat UI hot reload)
 
