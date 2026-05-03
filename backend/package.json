@@ -11,6 +11,7 @@
     "verify-api": "node scripts/verify-api.js",
     "check-schema": "node scripts/check-schema.js",
     "db:apply": "node scripts/apply-schema.js",
+    "seed-chatbot-prompts": "node scripts/seed-chatbot-prompts.js",
     "sync-dist": "node scripts/sync-dist.js",
     "supabase:schema": "node scripts/supabase-get-schema.js"
   },

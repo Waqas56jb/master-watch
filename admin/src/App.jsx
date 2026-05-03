@@ -9,6 +9,8 @@ import Bookings from './pages/Bookings.jsx';
 import CustomerFeedback from './pages/CustomerFeedback.jsx';
 import Contacts from './pages/Contacts.jsx';
 import ChatbotAppearance from './pages/ChatbotAppearance.jsx';
+import ChatbotPromptGlobal from './pages/ChatbotPromptGlobal.jsx';
+import ChatbotPromptPages from './pages/ChatbotPromptPages.jsx';
 import ChatActivity from './pages/ChatActivity.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import Account from './pages/Account.jsx';
@@ -35,6 +37,8 @@ export default function App() {
         <Route path="/bookings" element={<Bookings />} />
         <Route path="/feedback" element={<CustomerFeedback />} />
         <Route path="/contacts" element={<Contacts />} />
+        <Route path="/chatbot-prompt" element={<ChatbotPromptGlobal />} />
+        <Route path="/chatbot-pages" element={<ChatbotPromptPages />} />
         <Route path="/knowledge" element={<Knowledge />} />
         <Route path="/chat-activity" element={<ChatActivity />} />
         <Route path="/chat-appearance" element={<ChatbotAppearance />} />

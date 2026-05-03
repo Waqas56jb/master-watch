@@ -1,8 +1,10 @@
 import {
+  HiOutlineAdjustmentsHorizontal,
   HiOutlineBookOpen,
   HiOutlineCalendarDays,
   HiOutlineChatBubbleLeftRight,
   HiOutlineChatBubbleOvalLeft,
+  HiOutlineRectangleStack,
   HiOutlineSparkles,
   HiOutlineSquares2X2,
   HiOutlineSwatch,
@@ -33,6 +35,8 @@ const navGroups = [
     label: 'Inhalt',
     items: [
       { to: '/chat-activity', label: 'Chat-Aktivität', Icon: HiOutlineChatBubbleOvalLeft },
+      { to: '/chatbot-prompt', label: 'Chatbot – System & CRM', Icon: HiOutlineAdjustmentsHorizontal },
+      { to: '/chatbot-pages', label: 'Chatbot – Seiten-Wissen', Icon: HiOutlineRectangleStack },
       { to: '/knowledge', label: 'Wissensdatenbank', Icon: HiOutlineBookOpen },
       { to: '/chat-appearance', label: 'Chat-Erscheinungsbild', Icon: HiOutlineSwatch },
     ],
@@ -50,6 +54,8 @@ const ROUTE_META = {
   '/feedback': { title: 'Kundenfeedback', sub: 'Bewertungen & Stimmen' },
   '/contacts': { title: 'Kontakte', sub: 'Adressen im CRM' },
   '/chat-activity': { title: 'Chat-Aktivität', sub: 'Nutzung & Ereignisse' },
+  '/chatbot-prompt': { title: 'Chatbot – System & CRM', sub: 'Globale Anweisungen & Werkzeug-Regeln' },
+  '/chatbot-pages': { title: 'Chatbot – Seiten-Wissen', sub: 'Thematische Blöcke nach Seite / Bereich' },
   '/knowledge': { title: 'Wissensdatenbank', sub: 'Inhalte für den Chatbot' },
   '/chat-appearance': { title: 'Chatbot-Erscheinungsbild', sub: 'Farben & öffentliche Darstellung' },
   '/account': { title: 'Konto', sub: 'Sicherheit & Profil' },

@@ -9,11 +9,18 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
+const { probeSupabasePoolerRegion, getResolvedConnectionString } = require('../db');
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
+  if (!process.env.DATABASE_URL || !String(process.env.DATABASE_URL).trim()) {
     console.error('DATABASE_URL fehlt in .env');
+    process.exit(1);
+  }
+
+  await probeSupabasePoolerRegion();
+  const url = getResolvedConnectionString();
+  if (!url) {
+    console.error('DATABASE_URL fehlt oder ungültig');
     process.exit(1);
   }
 
@@ -27,10 +34,12 @@ async function main() {
         ? { rejectUnauthorized: false }
         : false;
 
+  const usesPooler = /pooler\.supabase\.com/i.test(url);
   const client = new Client({
     connectionString: url,
     ssl,
-    connectionTimeoutMillis: 15000,
+    connectionTimeoutMillis: 20000,
+    ...(usesPooler ? { prepareThreshold: 0 } : {}),
   });
 
   await client.connect();
@@ -48,5 +57,12 @@ main().catch((e) => {
   console.error(e.message || e);
   console.error('\nTips: Enable extension pgcrypto in Supabase → Database → Extensions if needed.');
   console.error('Or paste schema.sql manually in SQL Editor.');
+  if (e && e.code === 'ENOTFOUND') {
+    console.error(
+      '\nENOTFOUND auf db.*.supabase.co: Dieses Skript nutzt jetzt dieselbe Pooler-Umschreibung wie der Server. ' +
+        'Wenn es weiter fehlt: In Supabase → Connect die **Transaction pooler**-URI (Port 6543, ?pgbouncer=true) in DATABASE_URL eintragen ' +
+        'oder SUPABASE_POOLER_REGION + SUPABASE_POOLER_AWS_PREFIX=aws-1 setzen.'
+    );
+  }
   process.exit(1);
 });

@@ -124,6 +124,32 @@ INSERT INTO chatbot_theme (id, theme) VALUES (
   }'::jsonb
 ) ON CONFLICT (id) DO NOTHING;
 
+-- Chatbot system prompt (global + CRM tools) and optional per-page knowledge blocks
+CREATE TABLE IF NOT EXISTS chatbot_prompt_config (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  global_instructions TEXT NOT NULL DEFAULT '',
+  crm_tools_instructions TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO chatbot_prompt_config (id, global_instructions, crm_tools_instructions)
+VALUES (1, '', '')
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS chatbot_prompt_pages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  page_key VARCHAR(128) NOT NULL,
+  display_title VARCHAR(200) NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chatbot_prompt_pages_page_key ON chatbot_prompt_pages (page_key);
+CREATE INDEX IF NOT EXISTS idx_chatbot_prompt_pages_active_sort ON chatbot_prompt_pages (is_active, sort_order);
+
 -- ───────────────────────────────────────────────────────────────────────────
 -- Manual admin user (Supabase / psql): login checks password_hash with bcrypt.
 -- Requires pgcrypto (created above). Use lowercase email. Never paste production

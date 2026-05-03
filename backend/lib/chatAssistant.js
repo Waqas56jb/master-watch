@@ -7,49 +7,7 @@ const {
   insertFeedback,
   getPool,
 } = require('../db');
-
-const TOOLS_INSTRUCTION_APPEND = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VERBINDLICH: CRM-Werkzeuge (PostgreSQL aktiv)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Gedächtnis:** Bis zu **20 Nachrichten** (Kunde + Assistent) liegen vor. Bekannte Angaben aus dem Verlauf **nicht noch einmal aufdrängen** — nur echte **Lücken** schließen (**eine Hauptfrage** pro Nachricht vor dem ersten Werkzeugaufruf).
-
-**Ausgabe (Markdown, professionell, kurz):**
-- Vor dem Werkzeug: höchstens **eine klare Kernfrage** + optional **ein** zusätzlicher Satz Kontext.
-- Nach erfolgreicher Werkzeug-Antwort (Speicherung laut JSON mit ok true): **Bestätigung in 4–8 Zeilen**, Struktur: **ein Satz Kopf**, dann Markdown-Liste mit **- Punkt**, optional **„Nächster Schritt“** (WhatsApp oder Hinweis auf zeitnahe Rückmeldung).
-- Nach **Fehlschlag** ohne Speicherung: **keinen Erfolg vortäuschen** — höflich entschuldigen, **WhatsApp +49 157 55483605** oder erneuter Versuch.
-- Emoji sparsam: ⌚ ✅ 📦 (max. zwei pro Bubble).
-
-**Absicht → Werkzeug (technische Namen unverändert):**
-| Situation | Werkzeugaufruf |
-|-----------|----------------|
-| Reservierung / Buchung / „Uhr kaufen“ / Bestellanfrage | **submit_booking_request** |
-| Problem / Reklamation / Kundendienst | **submit_support_ticket** |
-| Geschäftliche oder allgemeine Anfrage ohne Eilkundendienst | **submit_inquiry_lead** |
-| Bewertung 1–5 / Zufriedenheit | **submit_feedback_entry** |
-
-**1. Buchung — Funktion submit_booking_request**
-Pflichtfelder vor Aufruf: **watch_model** (konkret: Marke/Serie wenn genannt).
-Dazu zusammen mit Verlauf abgesichert: **Name** und **mind. eines** aus **Telefon oder E-Mail** (nach Möglichkeit beides nicht zwingend, aber mindestens **ein seriös erreichbarer Kanal**).
-Optional und ideal: **Versand-Adresse oder PLZ+Ort+Land**, **quality_tier**, **quantity**, **notes** (Liefer-/Zahlungs-Hinweise).
-Liegt Modell + Name + Kontaktkanal klar vor → **Werkzeug sofort aufrufen**. Fehlt nur Adresse kurz nachfragen **oder** null setzen und im Text angeben, dass sich das Team ggf. meldet.
-
-**2. Kundendienst — Funktion submit_support_ticket**
-Pflichtfeld **message**: verständlicher Problemkern.
-Mit **subject** wenn passend (z. B. „Versand“, „Reklamation“).
-Dazu nach Möglichkeit **E-Mail oder Telefon** aus Verlauf oder **eine** gezielte Rückfrage.
-Adress-/Ortfelder optional.
-
-**3. Geschäftsanfrage — Funktion submit_inquiry_lead**
-Klare geschäftliche Nachricht im Feld **message**. Idealerweise **E-Mail oder Telefon** ergänzend.
-
-**4. Bewertung — Funktion submit_feedback_entry**
-**rating** 1–5 als Ganzzahl: wenn unbekannt genau eine Antwort erwarten mit Skala („1 sehr schlecht … 5 sehr gut“).
-Dann Werkzeug aufrufen; optional die Felder comment, suggestion, email.
-
-Zwischen zwei Tool-Runden keine langen Essays — immer **kurz gefasst**.
-`;
+const { MINIMAL_CRM_TOOLS_FALLBACK } = require('./chatbotPrompt');
 
 const CHAT_TOOLS = [
   {
@@ -201,9 +159,12 @@ async function execTool(name, rawArgs) {
  * Führt den Chat mit optionaler Werkzeug-Schleife aus.
  * Liefert den Assistententext (Markdown).
  */
-async function runAssistantChat(openai, { baseSystemPrompt, recentMessages }) {
+async function runAssistantChat(openai, { baseSystemPrompt, crmToolsInstructions = '', recentMessages }) {
   const poolActive = !!getPool();
-  const sys = poolActive ? `${baseSystemPrompt}\n${TOOLS_INSTRUCTION_APPEND}` : baseSystemPrompt;
+  const toolsBlock = poolActive
+    ? String(crmToolsInstructions || '').trim() || MINIMAL_CRM_TOOLS_FALLBACK
+    : '';
+  const sys = toolsBlock ? `${baseSystemPrompt}\n${toolsBlock}` : baseSystemPrompt;
   let messagesPayload = [...recentMessages];
 
   const maxRounds = 5;
@@ -249,4 +210,4 @@ async function runAssistantChat(openai, { baseSystemPrompt, recentMessages }) {
   return 'Bitte noch einmal kurz schreiben oder direkt **WhatsApp +49 157 55483605** — danke für deine Geduld.';
 }
 
-module.exports = { CHAT_TOOLS, TOOLS_INSTRUCTION_APPEND, runAssistantChat };
+module.exports = { CHAT_TOOLS, runAssistantChat };

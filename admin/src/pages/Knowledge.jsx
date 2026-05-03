@@ -151,7 +151,9 @@ export default function Knowledge() {
       <div className="page-head row">
         <div>
           <h2>Wissensdatenbank</h2>
-          <p className="muted">Wird zusätzlich zum festen Prompt an den Chatbot angehängt</p>
+          <p className="muted">
+            Zusätzliche Einträge aus der Datenbank — werden nach System-, Seiten- und CRM-Blöcken an den Prompt angehängt
+          </p>
         </div>
         <button type="button" className="btn-primary" onClick={startNew}>
           <HiOutlinePlusSmall size={22} style={{ marginRight: 6, verticalAlign: 'middle' }} aria-hidden />

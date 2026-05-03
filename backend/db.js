@@ -250,7 +250,7 @@ async function fetchActiveKnowledgeForPrompt() {
   });
   return (
     '\n\n== ERWEITERTES WISSEN AUS ADMIN-PANEL (Datenbank) — gültige Zusatzinfos ==\n' +
-    'Die folgenden Punkte wurden vom Shop-Betreiber ergänzt. Kombiniere sie konsistent mit dem Haupt-Wissensblock oben.\n\n' +
+    'Die folgenden Punkte wurden vom Shop-Betreiber ergänzt. Kombiniere sie konsistent mit Systemprompt, Seiten-Wissen und CRM-Regeln.\n\n' +
     blocks.join('\n\n---\n\n')
   );
 }
@@ -445,6 +445,7 @@ async function insertFeedback(opts) {
 
 module.exports = {
   getPool,
+  getResolvedConnectionString,
   getDatabaseHostFromEnv,
   probeSupabasePoolerRegion,
   query,

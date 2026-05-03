@@ -95,8 +95,9 @@ VITE_API_BASE=https://your-api.vercel.app npm run build
 
 ## How the chatbot uses knowledge
 
-1. **Default:** The large `SYSTEM_PROMPT` constant in `backend/server.js` is always included (unchanged design).
-2. **Database:** Active rows from `knowledge_entries` are loaded on each `/chat` request and appended after the prompt under `ERWEITERTES WISSEN AUS ADMIN-PANEL`.
+1. **System & CRM (Postgres):** Row `chatbot_prompt_config` holds `global_instructions` and `crm_tools_instructions` (edited in Admin under **Chatbot – System & CRM**). Optional per-page blocks live in `chatbot_prompt_pages` (**Chatbot – Seiten-Wissen**).
+2. **Assembly order on each `/chat`:** global instructions → active non-empty page blocks (by `sort_order`) → active `knowledge_entries` under `ERWEITERTES WISSEN AUS ADMIN-PANEL` → CRM/tools block when the DB pool is active.
+3. **Initial copy of legacy prompts:** After `npm run db:apply`, run `npm run seed-chatbot-prompts` once (from `backend/`) to load `backend/seed/default-*.txt` into the config row. Use `--force` to overwrite.
 
 If `DATABASE_URL` is unset, the app runs without KB / CRM DB features. `/chat` still works when `OPENAI_API_KEY` is set; without it, `/chat` returns **503** with a clear message.
 
@@ -114,6 +115,10 @@ If `DATABASE_URL` is unset, the app runs without KB / CRM DB features. `/chat` s
 | PUT | `/api/admin/knowledge/:id` | Update |
 | PATCH | `/api/admin/knowledge/:id/toggle` | Flip `is_active` |
 | DELETE | `/api/admin/knowledge/:id` | Delete |
+| GET / PUT | `/api/admin/chatbot-prompt` | Global + CRM prompt text (`id` is always `1`) |
+| GET / POST | `/api/admin/chatbot-prompt/pages` | List / create per-page prompt blocks |
+| GET / PUT / DELETE | `/api/admin/chatbot-prompt/pages/:id` | One page block |
+| PATCH | `/api/admin/chatbot-prompt/pages/:id/toggle` | Flip `is_active` |
 
 Optional: `chat_events` is appended when users call `/chat` (message length); dashboard “Chat-Nachrichten” line chart uses this.
 

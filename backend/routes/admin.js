@@ -660,4 +660,193 @@ router.put('/theme', authMiddleware, async (req, res) => {
   }
 });
 
+function normalizePromptPageKey(raw) {
+  const s = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 128);
+  return s || 'seite';
+}
+
+const MAX_PROMPT_FIELD = 400_000;
+
+/* ── Chatbot: global + CRM prompt (single row) ── */
+router.get('/chatbot-prompt', authMiddleware, async (_req, res) => {
+  try {
+    if (!getPool()) {
+      return res.status(503).json({ error: 'Datenbank nicht konfiguriert (DATABASE_URL)' });
+    }
+    const r = await query(
+      `SELECT id, global_instructions, crm_tools_instructions, updated_at FROM chatbot_prompt_config WHERE id = 1`
+    );
+    const row = r.rows[0] || { id: 1, global_instructions: '', crm_tools_instructions: '', updated_at: null };
+    res.json(row);
+  } catch (e) {
+    console.error('chatbot-prompt get', e);
+    if (e && e.code === '42P01') {
+      return res.status(503).json({ error: 'Schema fehlt: npm run db:apply (chatbot_prompt_config)' });
+    }
+    res.status(500).json({ error: 'Prompt nicht ladbar' });
+  }
+});
+
+router.put('/chatbot-prompt', authMiddleware, async (req, res) => {
+  try {
+    if (!getPool()) return res.status(503).json({ error: 'Datenbank erforderlich' });
+    const b = req.body || {};
+    let global_instructions =
+      b.global_instructions !== undefined ? String(b.global_instructions) : null;
+    let crm_tools_instructions =
+      b.crm_tools_instructions !== undefined ? String(b.crm_tools_instructions) : null;
+    if (global_instructions !== null && global_instructions.length > MAX_PROMPT_FIELD) {
+      return res.status(400).json({ error: 'global_instructions zu lang' });
+    }
+    if (crm_tools_instructions !== null && crm_tools_instructions.length > MAX_PROMPT_FIELD) {
+      return res.status(400).json({ error: 'crm_tools_instructions zu lang' });
+    }
+    const cur = await query(`SELECT global_instructions, crm_tools_instructions FROM chatbot_prompt_config WHERE id = 1`);
+    const row = cur.rows[0];
+    if (!row) return res.status(503).json({ error: 'Konfigurationszeile fehlt — db:apply ausführen' });
+    if (global_instructions === null) global_instructions = row.global_instructions;
+    if (crm_tools_instructions === null) crm_tools_instructions = row.crm_tools_instructions;
+    const up = await query(
+      `
+      UPDATE chatbot_prompt_config
+      SET global_instructions = $1, crm_tools_instructions = $2, updated_at = NOW()
+      WHERE id = 1
+      RETURNING id, global_instructions, crm_tools_instructions, updated_at
+      `,
+      [global_instructions, crm_tools_instructions]
+    );
+    res.json(up.rows[0]);
+  } catch (e) {
+    console.error('chatbot-prompt put', e);
+    res.status(500).json({ error: 'Prompt nicht gespeichert' });
+  }
+});
+
+/* ── Chatbot: per-page knowledge blocks ── */
+router.get('/chatbot-prompt/pages', authMiddleware, async (_req, res) => {
+  try {
+    const r = await query(
+      `
+      SELECT id, page_key, display_title, sort_order, is_active, created_at, updated_at,
+             LEFT(content, 160) AS excerpt
+      FROM chatbot_prompt_pages
+      ORDER BY sort_order ASC, display_title ASC
+      `
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    console.error('chatbot-prompt pages list', e);
+    if (e && e.code === '42P01') {
+      return res.status(503).json({ error: 'Schema fehlt: npm run db:apply (chatbot_prompt_pages)' });
+    }
+    res.status(500).json({ error: 'Liste nicht ladbar' });
+  }
+});
+
+router.get('/chatbot-prompt/pages/:id', authMiddleware, async (req, res) => {
+  try {
+    const r = await query(`SELECT * FROM chatbot_prompt_pages WHERE id = $1::uuid`, [req.params.id]);
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(row);
+  } catch (e) {
+    console.error('chatbot-prompt page get', e);
+    res.status(500).json({ error: 'Nicht ladbar' });
+  }
+});
+
+router.post('/chatbot-prompt/pages', authMiddleware, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const page_key = normalizePromptPageKey(b.page_key || b.display_title || 'seite');
+    const display_title = String(b.display_title || page_key).trim().slice(0, 200) || page_key;
+    const content = b.content !== undefined ? String(b.content) : '';
+    if (content.length > MAX_PROMPT_FIELD) return res.status(400).json({ error: 'content zu lang' });
+    const sort_order = Number(b.sort_order) || 0;
+    const is_active = b.is_active !== undefined ? Boolean(b.is_active) : true;
+    const r = await query(
+      `
+      INSERT INTO chatbot_prompt_pages (page_key, display_title, content, sort_order, is_active)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+      `,
+      [page_key, display_title, content, sort_order, is_active]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    if (e && e.code === '23505') {
+      return res.status(409).json({ error: 'page_key bereits vergeben' });
+    }
+    console.error('chatbot-prompt page create', e);
+    res.status(500).json({ error: 'Speichern fehlgeschlagen' });
+  }
+});
+
+router.put('/chatbot-prompt/pages/:id', authMiddleware, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const cur = await query(`SELECT * FROM chatbot_prompt_pages WHERE id = $1::uuid`, [req.params.id]);
+    const row = cur.rows[0];
+    if (!row) return res.status(404).json({ error: 'Nicht gefunden' });
+
+    const page_key =
+      b.page_key !== undefined ? normalizePromptPageKey(b.page_key) : row.page_key;
+    const display_title =
+      b.display_title !== undefined ? String(b.display_title).trim().slice(0, 200) : row.display_title;
+    const content = b.content !== undefined ? String(b.content) : row.content;
+    if (content.length > MAX_PROMPT_FIELD) return res.status(400).json({ error: 'content zu lang' });
+    const sort_order = b.sort_order !== undefined ? Number(b.sort_order) || 0 : row.sort_order;
+    const is_active = b.is_active !== undefined ? Boolean(b.is_active) : row.is_active;
+
+    const r = await query(
+      `
+      UPDATE chatbot_prompt_pages SET
+        page_key = $2, display_title = $3, content = $4, sort_order = $5, is_active = $6, updated_at = NOW()
+      WHERE id = $1::uuid
+      RETURNING *
+      `,
+      [req.params.id, page_key, display_title || page_key, content, sort_order, is_active]
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    if (e && e.code === '23505') {
+      return res.status(409).json({ error: 'page_key bereits vergeben' });
+    }
+    console.error('chatbot-prompt page update', e);
+    res.status(500).json({ error: 'Update fehlgeschlagen' });
+  }
+});
+
+router.patch('/chatbot-prompt/pages/:id/toggle', authMiddleware, async (req, res) => {
+  try {
+    const r = await query(
+      `UPDATE chatbot_prompt_pages SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1::uuid RETURNING *`,
+      [req.params.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('chatbot-prompt page toggle', e);
+    res.status(500).json({ error: 'Toggle fehlgeschlagen' });
+  }
+});
+
+router.delete('/chatbot-prompt/pages/:id', authMiddleware, async (req, res) => {
+  try {
+    const r = await query(`DELETE FROM chatbot_prompt_pages WHERE id = $1::uuid RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('chatbot-prompt page delete', e);
+    res.status(500).json({ error: 'Löschen fehlgeschlagen' });
+  }
+});
+
 module.exports = { router, authMiddleware };
