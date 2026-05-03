@@ -56,11 +56,11 @@ export default function CustomerFeedback() {
   }, [load]);
 
   async function remove(id) {
-    if (!window.confirm('Dieses Feedback löschen?')) return;
+    if (!window.confirm('Diesen Bewertungseintrag wirklich löschen?')) return;
     try {
       await apiFetch(`/api/admin/feedback/${id}`, { method: 'DELETE' });
       await load();
-      notify.ok('Feedback entfernt');
+      notify.ok('Bewertung entfernt');
     } catch (e) {
       const m = e?.data?.error || e.message;
       setErr(m);
@@ -99,7 +99,7 @@ export default function CustomerFeedback() {
             Daten werden geladen…
           </div>
         ) : !items?.length ? (
-          <EmptyState title="Noch kein Feedback" hint="Sterne und Kommentare aus dem Chatbot erscheinen hier." />
+          <EmptyState title="Noch keine Bewertungen" hint="Sterne und Kommentare aus dem Chatbot erscheinen hier." />
         ) : (
           <motion.div className="table-scroll" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <table className="data-table">

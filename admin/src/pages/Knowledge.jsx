@@ -107,7 +107,7 @@ export default function Knowledge() {
       setEditingId(null);
       setForm(emptyForm());
       await load();
-      notify.ok('Knowledge gespeichert');
+      notify.ok('Wissensdatenbank gespeichert');
     } catch (ex) {
       const m = ex?.data?.error || ex.message;
       setErr(m);
@@ -150,7 +150,7 @@ export default function Knowledge() {
     <div className="page">
       <div className="page-head row">
         <div>
-          <h2>Knowledge Base</h2>
+          <h2>Wissensdatenbank</h2>
           <p className="muted">Wird zusätzlich zum festen Prompt an den Chatbot angehängt</p>
         </div>
         <button type="button" className="btn-primary" onClick={startNew}>
@@ -220,15 +220,15 @@ export default function Knowledge() {
                   />
                 </label>
                 <label className="field">
-                  <span>Slug</span>
-                  <input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="optional" />
+                  <span>Kurzname (URL)</span>
+                  <input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="freiwillig" />
                 </label>
                 <label className="field">
                   <span>Kategorie</span>
                   <input
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    placeholder="z.B. pricing, shipping, faq"
+                    placeholder="z. B. preise, versand, faq"
                   />
                 </label>
                 <label className="field">
@@ -241,7 +241,7 @@ export default function Knowledge() {
                 </label>
               </div>
               <label className="field">
-                <span>Inhalt * (Markdown/Text)</span>
+                <span>Inhalt * (Text mit einfachen Formatierungen möglich)</span>
                 <textarea
                   value={form.content}
                   onChange={(e) => setForm({ ...form, content: e.target.value })}
@@ -265,7 +265,7 @@ export default function Knowledge() {
                 {editingId && editingId !== 'new' ? (
                   <>
                     <button type="button" className="btn-secondary" onClick={() => toggle(editingId)}>
-                      Aktiv ↔︎
+                      Aktivierung umschalten
                     </button>
                     <button type="button" className="btn-danger" onClick={() => remove(editingId)}>
                       Löschen

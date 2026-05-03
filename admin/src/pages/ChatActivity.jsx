@@ -53,7 +53,7 @@ export default function ChatActivity() {
         <div>
           <h2 className="page-head-title">Chat-Aktivität</h2>
           <p className="muted">
-            Einträge aus <code>chat_events</code> (je Aufruf von <code>/chat</code>: Zeichenlänge der letzten Nutzernachricht)
+            Protokolle aus <code>chat_events</code> — je Aufruf von <code>/chat</code> die Zeichenzahl der letzten Nutzernachricht
           </p>
         </div>
       </div>
@@ -81,13 +81,13 @@ export default function ChatActivity() {
             Daten werden geladen…
           </div>
         ) : items.length === 0 ? (
-          <EmptyState title="Keine Chat-Events" hint="Sobald Nutzer den Chatbot verwenden, erscheinen Einträge hier." />
+          <EmptyState title="Keine Chat-Protokolle" hint="Sobald Besucher den Chatbot nutzen, erscheinen Einträge hier." />
         ) : (
           <motion.div className="table-scroll" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>Nr.</th>
                   <th>Zeitpunkt</th>
                   <th>Nutzer-Nachricht (Zeichen)</th>
                 </tr>

@@ -16,6 +16,19 @@ const KEY_ORDER = [
   'textDim',
 ];
 
+/** Deutsche Anzeigenamen für Farbfelder (öffentliches Chatbot-Erscheinungsbild). */
+const THEME_KEY_LABELS = {
+  surface: 'App-Hintergrund',
+  card: 'Kartenfläche',
+  accent: 'Akzentfarbe',
+  userBubble: 'Nutzer-Nachricht',
+  botBubble: 'Bot-Antwort',
+  bg: 'Seitenhintergrund',
+  border: 'Rahmenfarbe',
+  text: 'Schriftfarbe',
+  textDim: 'Gedämpfte Schrift',
+};
+
 const HEX_SWATCH_GRID = [
   '#22c55e',
   '#10b981',
@@ -106,8 +119,8 @@ export default function ChatbotAppearance() {
       const toSend = normalizeThemeForSave(theme);
       const r = await apiFetch('/api/admin/theme', { method: 'PUT', body: JSON.stringify({ theme: toSend }) });
       setTheme(r.theme || theme);
-      setOkMsg('Gespeichert — lädt beim nächsten Besuch auf dem Widget.');
-      notify.ok('Theme gespeichert');
+      setOkMsg('Gespeichert — wird beim nächsten Besuch im Chat-Widget geladen.');
+      notify.ok('Darstellung gespeichert');
     } catch (e) {
       const m = e?.data?.error || e.message;
       setErr(m);
@@ -133,8 +146,8 @@ export default function ChatbotAppearance() {
             Chatbot-Erscheinungsbild
           </h2>
           <p className="muted">
-            Farben pro Bereich mit Hex & Schnellwahl. Diese Daten werden öffentlich unter{' '}
-            <code className="muted">GET /api/public/chatbot-theme</code> bereitgestellt.
+            Farben je Bereich als Hex-Wert und per Schnellwahl. Die Konfiguration ist öffentlich unter dem Endpunkt{' '}
+            <code className="muted">/api/public/chatbot-theme</code> (nur Lesen) erreichbar.
           </p>
         </div>
         <button type="button" className="btn-primary theme-save-main" disabled={saving || loading} onClick={saveAll}>
@@ -152,7 +165,7 @@ export default function ChatbotAppearance() {
       {!loading ? (
         <>
           <div className="theme-presets glass">
-            <h3 className="theme-section-title">Schnellauswahl-Presets</h3>
+            <h3 className="theme-section-title">Schnellvorlagen</h3>
             <div className="theme-preset-buttons">
               {presets.map((p) => (
                 <motion.button
@@ -182,7 +195,7 @@ export default function ChatbotAppearance() {
             {keys.map((key) => {
               const rawHex = theme[key] != null ? String(theme[key]) : '#000000';
               const canon = normalizeHex(rawHex);
-              const label = labels[key] || key;
+              const label = THEME_KEY_LABELS[key] || labels[key] || key;
               return (
                 <motion.article
                   key={key}
@@ -192,8 +205,8 @@ export default function ChatbotAppearance() {
                   transition={{ duration: 0.2 }}
                 >
                   <div className="theme-card-head">
-                    <div className="theme-chip-name">{key}</div>
-                    <div className="theme-chip-label muted">{label}</div>
+                    <div className="theme-chip-name">{label}</div>
+                    <div className="theme-chip-label muted mono-sm">{key}</div>
                   </div>
                   <div className="theme-card-body">
                     <div className="theme-color-big" style={{ background: previewBg(rawHex, '#475569') }}>
@@ -206,7 +219,7 @@ export default function ChatbotAppearance() {
                       />
                     </div>
                     <div className="hex-row">
-                      <span className="mono-sm hex-label">HEX</span>
+                      <span className="mono-sm hex-label">Hex</span>
                       <input
                         type="text"
                         className="hex-input mono-sm"
@@ -245,7 +258,7 @@ export default function ChatbotAppearance() {
           </div>
         </>
       ) : (
-        <div className="muted padded">Lädt Theme…</div>
+        <div className="muted padded">Lädt Darstellung…</div>
       )}
     </div>
   );

@@ -51,7 +51,7 @@ export default function Contacts() {
       <div className="page-head row">
         <div>
           <h2 className="page-head-title">Kontakte</h2>
-          <p className="muted">E-Mail-Adressen aus Buchungen, Anfragen &amp; Feedback · aggregiert</p>
+          <p className="muted">E-Mail-Adressen aus Buchungen, Anfragen und Bewertungen · zusammengeführt</p>
         </div>
       </div>
 

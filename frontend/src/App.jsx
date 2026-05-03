@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
 
 /**
- * - Vite dev: `VITE_API_URL` empty → relative URLs → dev proxy to local API.
- * - Production build opened at http://localhost:3000 (Express monolith): **ignore** baked `VITE_API_URL`
- *   pointing at Vercel — use same-origin `/chat` so you never get CORS to production by mistake.
- * - Production build at localhost on another port (e.g. vite preview): use local API port 3000.
- * - Real deploy: use `VITE_API_URL` only when the widget is on a different origin than the API.
+ * API-Basis für Chat und Theme:
+ * - Vite-Entwicklung: `VITE_API_URL` leer → relative URLs → Proxy zum lokalen Backend.
+ * - Produktionsbundle auf localhost:3000 (Monolith): eingebettete `VITE_API_URL` ignorieren → gleiche Quelle `/chat`.
+ * - Vorschau auf anderem localhost-Port: lokales Backend (Port 3000).
+ * - Echtes Deployment: `VITE_API_URL` setzen, wenn Widget und API unterschiedliche Domains haben.
  */
 const DEFAULT_LOCAL_API = 'http://127.0.0.1:3000';
 
@@ -37,7 +37,7 @@ function getApiRoot() {
     return stripRemoteWhenLocalhost(env);
   }
 
-  // Production bundle: never use baked VITE_API_URL (e.g. Vercel) when the page is opened on loopback.
+  // Produktionsbundle: auf Loopback keine eingebettete Remote-`VITE_API_URL` verwenden.
   if (typeof window !== 'undefined' && isLoopbackHostname(window.location.hostname)) {
     const port = String(window.location.port || '');
     if (port === '3000') return '';
@@ -63,23 +63,23 @@ const HISTORY_CAP = 20;
 
 const WELCOME_MARKDOWN = `Willkommen bei **MisterWatch**! 👋
 
-Ich helfe dir bei **Uhren**, **Buchungen**, **Support** und mehr.
+Ich helfe dir bei **Uhren**, **Buchungen**, **Kundendienst** und mehr.
 
 Du kannst:
-- 📦 eine **Online-Buchung** anfragen
-- 💬 **Support** erreichen oder eine **Lead-Anfrage** stellen  
-- ⭐ **Feedback** hinterlassen
+- 📦 eine **Reservierung oder Buchung** anfragen
+- 💬 den **Kundendienst** erreichen oder eine **geschäftliche Anfrage** stellen
+- ⭐ eine **Bewertung** hinterlassen
 
-**Was möchtest du tun?**`;
+**Womit kann ich dir helfen?**`;
 
 const QUICK_ACTIONS = [
-  { label: '📦 Buchung', text: 'Ich möchte eine Uhr buchen/reservieren. Welche Daten brauchst du von mir?' },
-  { label: '💬 Support', text: 'Ich habe ein Problem und brauche Hilfe vom Support-Team.' },
-  { label: '⭐ Feedback', text: 'Ich möchte Feedback zum Shop geben.' },
+  { label: '📦 Buchung', text: 'Ich möchte eine Uhr buchen oder reservieren. Welche Angaben benötigt ihr von mir?' },
+  { label: '💬 Kundendienst', text: 'Ich habe ein Problem und benötige Hilfe vom Kundendienst.' },
+  { label: '⭐ Bewertung', text: 'Ich möchte eine Bewertung zum Shop abgeben.' },
   { label: '🏅 Qualitäten', text: 'Welche Qualitätsstufen gibt es?' },
   { label: '💰 Preise', text: 'Was kosten eure Uhren?' },
   { label: '📦 Lieferzeit', text: 'Wie lange dauert die Lieferung?' },
-  { label: '💳 Zahlung', text: 'Welche Zahlungsmethoden bietet ihr an?' },
+  { label: '💳 Zahlung', text: 'Welche Zahlungsarten bietet ihr an?' },
 ];
 
 function rgbFromHex(hex) {
@@ -232,7 +232,7 @@ export default function App() {
               ...prev,
               {
                 role: 'bot',
-                text: 'Entschuldigung, es gab einen Fehler. Bitte versuche es erneut.',
+                text: 'Entschuldigung, es ist ein Fehler aufgetreten. Bitte versuche es gleich noch einmal.',
                 time: getTime(),
               },
             ];
@@ -246,7 +246,7 @@ export default function App() {
             ...prev,
             {
               role: 'bot',
-              text: 'Verbindungsfehler. Bitte überprüfe deine Internetverbindung und versuche es erneut.',
+              text: 'Verbindungsfehler. Bitte prüfe deine Internetverbindung und versuche es erneut.',
               time: getTime(),
             },
           ];
@@ -276,19 +276,17 @@ export default function App() {
     <div className="app-root">
       <div className="chat-widget">
 
-        {/* ── Header ── */}
         <div className="chat-header">
           <div className="header-logo">⌚</div>
           <div className="header-info">
-            <div className="header-name">MisterWatch Assistent</div>
+            <div className="header-name">MisterWatch Berater</div>
             <div className="header-status">
               <div className="status-dot" />
-              <span className="status-text">Online – Bereit zu helfen</span>
+              <span className="status-text">Verbunden – Wie kann ich helfen?</span>
             </div>
           </div>
         </div>
 
-        {/* ── Messages ── */}
         <div className="messages-area" ref={messagesAreaRef}>
           <div className="date-label">Heute</div>
 
@@ -343,7 +341,6 @@ export default function App() {
           )}
         </div>
 
-        {/* ── Composer (input + footer) ── */}
         <div className="chat-composer">
           <div className="input-area">
             <div className="input-wrap">
@@ -354,7 +351,7 @@ export default function App() {
                 enterKeyHint="send"
                 autoComplete="off"
                 autoCorrect="on"
-                placeholder="Schreib deine Frage…"
+                placeholder="Nachricht eingeben …"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
@@ -385,7 +382,7 @@ export default function App() {
           </div>
 
           <div className="chat-footer">
-            Unterstützt von <span>MisterWatch KI</span> · misterwatches.store
+            Unterstützt durch <span>künstliche Intelligenz von MisterWatch</span> · misterwatches.store
           </div>
         </div>
 

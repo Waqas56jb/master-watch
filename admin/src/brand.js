@@ -1,4 +1,4 @@
-/** Live CDN: watch (⌚) as SVG — EmojiFavicons (Cloudflare). Used for favicon + in-app logo. */
+/** Logo per CDN: Uhr (⌚) als SVG von EmojiFavicons (Cloudflare) — für Symbol und Kopfzeile. */
 const WATCH_LOGO_PATH = 'https://emojifavicons.com/watch';
 
 /**
@@ -14,5 +14,5 @@ export function watchLogoUrl(opts = {}) {
   return u.href;
 }
 
-/** Tab / bookmark icon (matches `--bg` theme). */
+/** Symbol für Browser-Tab und Verknüpfungen (Farbe an Hintergrund angepasst). */
 export const WATCH_FAVICON_URL = watchLogoUrl({ size: 32, bg: '0d0d0d', shape: 'rounded' });

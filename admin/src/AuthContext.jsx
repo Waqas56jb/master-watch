@@ -35,6 +35,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth outside provider');
+  if (!ctx) throw new Error('useAuth außerhalb von AuthProvider verwendet');
   return ctx;
 }

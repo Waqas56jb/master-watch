@@ -41,7 +41,7 @@ body {
   margin: 0;
 }
 
-/* Hide scrollbars (wheel / touch / trackpad still scroll) — no bright system bar */
+/* Scrollbalken ausblenden (Mausrad / Touch / Trackpad scrollt weiter) — kein helles System-UI */
 * {
   scrollbar-width: none;
 }
@@ -1452,7 +1452,7 @@ img.logo-ring.logo-ring--remote {
   align-items: center;
 }
 
-/* ========== Phones: layout, tables, charts, theme ========== */
+/* ========== Schmale Ansichten: Layout, Tabellen, Diagramme ========== */
 @media (max-width: 640px) {
   .layout-main {
     padding: 14px 12px calc(22px + env(safe-area-inset-bottom, 0px));

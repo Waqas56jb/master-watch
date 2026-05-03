@@ -18,14 +18,14 @@ import BrandLogo from '../components/BrandLogo.jsx';
 const navGroups = [
   {
     label: 'Übersicht',
-    items: [{ to: '/dashboard', label: 'Dashboard', Icon: HiOutlineSquares2X2 }],
+    items: [{ to: '/dashboard', label: 'Übersicht', Icon: HiOutlineSquares2X2 }],
   },
   {
     label: 'CRM & Kunden',
     items: [
       { to: '/inquiries', label: 'Anfragen', Icon: HiOutlineChatBubbleLeftRight },
       { to: '/bookings', label: 'Buchungen', Icon: HiOutlineCalendarDays },
-      { to: '/feedback', label: 'Feedback', Icon: HiOutlineSparkles },
+      { to: '/feedback', label: 'Kundenfeedback', Icon: HiOutlineSparkles },
       { to: '/contacts', label: 'Kontakte', Icon: HiOutlineUserGroup },
     ],
   },
@@ -33,8 +33,8 @@ const navGroups = [
     label: 'Inhalt',
     items: [
       { to: '/chat-activity', label: 'Chat-Aktivität', Icon: HiOutlineChatBubbleOvalLeft },
-      { to: '/knowledge', label: 'Knowledge Base', Icon: HiOutlineBookOpen },
-      { to: '/chat-appearance', label: 'Chat-Erscheinung', Icon: HiOutlineSwatch },
+      { to: '/knowledge', label: 'Wissensdatenbank', Icon: HiOutlineBookOpen },
+      { to: '/chat-appearance', label: 'Chat-Erscheinungsbild', Icon: HiOutlineSwatch },
     ],
   },
   {
@@ -44,14 +44,14 @@ const navGroups = [
 ];
 
 const ROUTE_META = {
-  '/dashboard': { title: 'Überblick', sub: 'KPIs & Trends' },
-  '/inquiries': { title: 'Anfragen & Support', sub: 'Leads, Tickets, Notizen' },
+  '/dashboard': { title: 'Überblick', sub: 'Kennzahlen & Trends' },
+  '/inquiries': { title: 'Anfragen & Kundendienst', sub: 'Interessenten, Tickets, Notizen' },
   '/bookings': { title: 'Buchungen', sub: 'Anfragen & Status' },
   '/feedback': { title: 'Kundenfeedback', sub: 'Bewertungen & Stimmen' },
-  '/contacts': { title: 'Kontakte', sub: 'CRM-Adressen' },
-  '/chat-activity': { title: 'Chat-Aktivität', sub: 'Nutzung & Events' },
-  '/knowledge': { title: 'Knowledge Base', sub: 'Chatbot-Wissen' },
-  '/chat-appearance': { title: 'Chatbot-Erscheinungsbild', sub: 'Farben & öffentliches Theme' },
+  '/contacts': { title: 'Kontakte', sub: 'Adressen im CRM' },
+  '/chat-activity': { title: 'Chat-Aktivität', sub: 'Nutzung & Ereignisse' },
+  '/knowledge': { title: 'Wissensdatenbank', sub: 'Inhalte für den Chatbot' },
+  '/chat-appearance': { title: 'Chatbot-Erscheinungsbild', sub: 'Farben & öffentliche Darstellung' },
   '/account': { title: 'Konto', sub: 'Sicherheit & Profil' },
 };
 
@@ -66,7 +66,7 @@ export default function Layout({ children }) {
   const { email, logout } = useAuth();
   const nav = useNavigate();
 
-  const meta = ROUTE_META[location.pathname] || { title: 'Admin', sub: '' };
+  const meta = ROUTE_META[location.pathname] || { title: 'Verwaltung', sub: '' };
 
   const initials = useMemo(() => initialsFromEmail(email), [email]);
 
@@ -82,7 +82,7 @@ export default function Layout({ children }) {
           <BrandLogo variant="sidebar" aria-hidden />
           <div>
             <div className="sidebar-title">MisterWatch</div>
-            <div className="sidebar-sub">Admin Console</div>
+            <div className="sidebar-sub">Verwaltung</div>
           </div>
         </div>
 
@@ -110,11 +110,11 @@ export default function Layout({ children }) {
         <div className="sidebar-footer">
           <div className="sidebar-status">
             <span className="sidebar-status-dot" aria-hidden />
-            <span>Online</span>
+            <span>Verbunden</span>
           </div>
-          <div className="sidebar-user mono-sm">{email || 'Admin'}</div>
+          <div className="sidebar-user mono-sm">{email || 'Administrator'}</div>
           <button type="button" className="btn-sidebar-logout" onClick={goLogin}>
-            Ausloggen
+            Abmelden
           </button>
         </div>
       </aside>

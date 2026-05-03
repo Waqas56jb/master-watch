@@ -1,13 +1,13 @@
 /**
- * API origin for admin fetch() calls.
+ * API-Basisadresse für fetch() im Admin-Frontend.
  *
- * Local `npm run dev` (Vite): leave API URL vars unset → relative `/api/...` is proxied (see admin/vite.config.js).
+ * Lokal (`npm run dev`): API-URL-Variablen leer lassen → relative `/api/...` über Vite-Proxy (admin/vite.config.js).
  *
- * Local `vite preview` / prod build opened at localhost: no env → http://127.0.0.1:3000.
+ * Vorschau / Build auf localhost ohne Umgebungsvariablen → http://127.0.0.1:3000.
  *
- * Production monolith (API + admin same host): leave unset → relative `/api/...`.
+ * Monolith (API und Admin gleiche Domain): leer lassen → relative `/api/...`.
  *
- * Standalone admin (different host): set `VITE_API_URL` (same as frontend) or `VITE_API_BASE` / `VITE_PUBLIC_API_URL` at build time (no trailing slash).
+ * Separates Admin-Hosting: `VITE_API_URL` (wie beim Frontend) oder `VITE_API_BASE` / `VITE_PUBLIC_API_URL` beim Build setzen (ohne abschließenden Schrägstrich).
  */
 const DEFAULT_LOCAL_API = 'http://127.0.0.1:3000';
 
@@ -17,7 +17,7 @@ function isLoopbackHostname(hostname) {
   return h === 'localhost' || h === '127.0.0.1' || h === '::1';
 }
 
-/** On loopback, ignore env pointing at a remote host so Vite proxy / same-origin is used. */
+/** Auf Loopback: entfernte API-URL aus der Umgebung ignorieren (Proxy / gleiche Quelle). */
 function stripRemoteWhenLocalhost(origin) {
   if (typeof window === 'undefined') return origin;
   if (!isLoopbackHostname(window.location.hostname)) return origin;
@@ -52,7 +52,7 @@ function resolveApiOrigin() {
     return stripRemoteWhenLocalhost(b);
   }
 
-  // Production bundle: never use baked remote URL on loopback (::1, 127.0.0.1, localhost).
+  // Produktionsbundle: auf Loopback keine eingebettete Remote-URL verwenden.
   if (typeof window !== 'undefined' && isLoopbackHostname(window.location.hostname)) {
     const port = String(window.location.port || '');
     if (port === '3000') return '';
@@ -92,7 +92,7 @@ export async function apiFetch(path, options = {}) {
     data = { raw: text };
   }
   if (!res.ok) {
-    const err = new Error(data?.error || res.statusText || 'Request failed');
+    const err = new Error(data?.error || res.statusText || 'Anfrage fehlgeschlagen');
     err.status = res.status;
     err.data = data;
     throw err;

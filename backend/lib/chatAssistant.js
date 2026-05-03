@@ -1,5 +1,5 @@
 /**
- * GPT-4o tool-use loop for leads, bookings, support & feedback.
+ * GPT-4o mit Werkzeugen: Buchungen, Anfragen, Kundendienst und Bewertungen.
  */
 const {
   insertBooking,
@@ -10,43 +10,43 @@ const {
 
 const TOOLS_INSTRUCTION_APPEND = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VERBINDLICH: CRM / TOOLS (PostgreSQL aktiv)
+VERBINDLICH: CRM-Werkzeuge (PostgreSQL aktiv)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Gedächtnis:** Bis zu **20 Nachrichten** (User + Assistent) liegen vor. Bekannte Angaben aus dem Verlauf **nicht noch einmal aufdrängen** — nur echte **Lücken** schließen (**eine Hauptfrage** pro Nachricht vor dem ersten Tool).
+**Gedächtnis:** Bis zu **20 Nachrichten** (Kunde + Assistent) liegen vor. Bekannte Angaben aus dem Verlauf **nicht noch einmal aufdrängen** — nur echte **Lücken** schließen (**eine Hauptfrage** pro Nachricht vor dem ersten Werkzeugaufruf).
 
 **Ausgabe (Markdown, professionell, kurz):**
-- Vor Tool: höchstens **eine klare Kernfrage** + optional **ein** zusätzlicher Satz Kontext.
-- Nach erfolgreicher Tool-Antwort (Speicherungs-Erfolg laut Tool-JSON mit ok true): **Bestätigung in 4–8 Zeilen**, Struktur: **ein Satz Kopf**, dann Markdown-Liste mit **- Punkt**, optional **„Nächster Schritt“** (WhatsApp oder Hinweis auf zeitnahe Rückmeldung).
-- Nach **failure** ohne Speicherung: **keinen Erfolg vortäuschen** — höflich entschuldigen, **WhatsApp +49 157 55483605** oder erneuter Versuch.
+- Vor dem Werkzeug: höchstens **eine klare Kernfrage** + optional **ein** zusätzlicher Satz Kontext.
+- Nach erfolgreicher Werkzeug-Antwort (Speicherung laut JSON mit ok true): **Bestätigung in 4–8 Zeilen**, Struktur: **ein Satz Kopf**, dann Markdown-Liste mit **- Punkt**, optional **„Nächster Schritt“** (WhatsApp oder Hinweis auf zeitnahe Rückmeldung).
+- Nach **Fehlschlag** ohne Speicherung: **keinen Erfolg vortäuschen** — höflich entschuldigen, **WhatsApp +49 157 55483605** oder erneuter Versuch.
 - Emoji sparsam: ⌚ ✅ 📦 (max. zwei pro Bubble).
 
-**Intents ↔ Tools:**
-| Situation | Tool |
-|-----------|------|
-| Reservierung / Buchung / „Uhr kaufen“ / Bestell-Anfrage | **submit_booking_request** |
-| Problem / Reklamation / Support | **submit_support_ticket** |
-| geschäftliche Anfrage / Lead ohne Eil-Support | **submit_inquiry_lead** |
-| Bewertung 1–5 / Feedback zur Zufriedenheit | **submit_feedback_entry** |
+**Absicht → Werkzeug (technische Namen unverändert):**
+| Situation | Werkzeugaufruf |
+|-----------|----------------|
+| Reservierung / Buchung / „Uhr kaufen“ / Bestellanfrage | **submit_booking_request** |
+| Problem / Reklamation / Kundendienst | **submit_support_ticket** |
+| Geschäftliche oder allgemeine Anfrage ohne Eilkundendienst | **submit_inquiry_lead** |
+| Bewertung 1–5 / Zufriedenheit | **submit_feedback_entry** |
 
-**1. Buchung — submit_booking_request**
+**1. Buchung — Funktion submit_booking_request**
 Pflichtfelder vor Aufruf: **watch_model** (konkret: Marke/Serie wenn genannt).
 Dazu zusammen mit Verlauf abgesichert: **Name** und **mind. eines** aus **Telefon oder E-Mail** (nach Möglichkeit beides nicht zwingend, aber mindestens **ein seriös erreichbarer Kanal**).
 Optional und ideal: **Versand-Adresse oder PLZ+Ort+Land**, **quality_tier**, **quantity**, **notes** (Liefer-/Zahlungs-Hinweise).
-Liegt Modell + Name + Kontaktkanal klar vor → **Tool sofort**. Fehlt nur Adresse kurz nachfragen **oder** null setzen und im Text angeben, dass sich das Team ggf. meldet.
+Liegt Modell + Name + Kontaktkanal klar vor → **Werkzeug sofort aufrufen**. Fehlt nur Adresse kurz nachfragen **oder** null setzen und im Text angeben, dass sich das Team ggf. meldet.
 
-**2. Support — submit_support_ticket**
-Pflicht **message**: verständlicher Problemkern.
-Mit **subject** wenn passend („Versand“, „Reklamation“, …).
+**2. Kundendienst — Funktion submit_support_ticket**
+Pflichtfeld **message**: verständlicher Problemkern.
+Mit **subject** wenn passend (z. B. „Versand“, „Reklamation“).
 Dazu nach Möglichkeit **E-Mail oder Telefon** aus Verlauf oder **eine** gezielte Rückfrage.
 Adress-/Ortfelder optional.
 
-**3. Lead — submit_inquiry_lead**
-Klare geschäftliche **message**. Idealerweise **E-Mail oder Telefon** ergänzend.
+**3. Geschäftsanfrage — Funktion submit_inquiry_lead**
+Klare geschäftliche Nachricht im Feld **message**. Idealerweise **E-Mail oder Telefon** ergänzend.
 
-**4. Feedback — submit_feedback_entry**
+**4. Bewertung — Funktion submit_feedback_entry**
 **rating** 1–5 als Ganzzahl: wenn unbekannt genau eine Antwort erwarten mit Skala („1 sehr schlecht … 5 sehr gut“).
-Dann Tool; optional comment, suggestion, email.
+Dann Werkzeug aufrufen; optional die Felder comment, suggestion, email.
 
 Zwischen zwei Tool-Runden keine langen Essays — immer **kurz gefasst**.
 `;
@@ -57,7 +57,7 @@ const CHAT_TOOLS = [
     function: {
       name: 'submit_booking_request',
       description:
-        'Reservierung/Online-Buchung. Nutzen sobald konkretes Uhr-/Modell bekannt IST und Name sowie mindestens E-Mail oder Telefon aus Gespräch klar sind. Adresse optional (null wenn unbekannt).',
+        'Reservierung oder Online-Buchung. Aufrufen, sobald Uhr bzw. Modell klar ist sowie Name und mindestens E-Mail oder Telefon aus dem Gespräch vorliegen. Adresse optional (null wenn unbekannt).',
       parameters: {
         type: 'object',
         properties: {
@@ -66,7 +66,7 @@ const CHAT_TOOLS = [
             type: 'string',
             description: 'AAA+, Highend oder Superclone / unbekannt leerlassen',
           },
-          quantity: { type: 'integer', description: 'Stückzahl, default 1' },
+          quantity: { type: 'integer', description: 'Stückzahl, Standard 1' },
           customer_name: { type: 'string' },
           email: { type: 'string' },
           phone: { type: 'string' },
@@ -85,7 +85,7 @@ const CHAT_TOOLS = [
     function: {
       name: 'submit_support_ticket',
       description:
-        'Support / Problem-Ticket sobald konkrete Problembeschreibung (message) feststeht plus E-Mail oder Telefon aus Gespräch bzw. nach Rückfrage.',
+        'Kundendienst-Ticket, sobald die Problembeschreibung (Feld message) klar ist und E-Mail oder Telefon aus dem Gespräch vorliegt oder nachgefragt wurde.',
       parameters: {
         type: 'object',
         properties: {
@@ -108,7 +108,7 @@ const CHAT_TOOLS = [
     function: {
       name: 'submit_inquiry_lead',
       description:
-        'Geschäfts-/Informations-Anfragen & Leads (kein Sofort-Eilfall). Nachricht als Klartext; möglichst Kontakt (E-Mail/Telefon/WhatsApp-Verweis vom Nutzer).',
+        'Geschäfts- oder Informationsanfragen und Interessentenanfragen ohne Eilkundendienst. Nachricht als Klartext; möglichst Kontakt (E-Mail, Telefon oder WhatsApp-Hinweis der Person).',
       parameters: {
         type: 'object',
         properties: {
@@ -131,7 +131,7 @@ const CHAT_TOOLS = [
     function: {
       name: 'submit_feedback_entry',
       description:
-        'Nutzerfeedback: Bewertung 1–5 Pflicht sobald angegeben/abgefragt; optional Kurzkommentar, Verbesserungsvorschlag und E-Mail.',
+        'Bewertung: Skala 1–5 Pflicht, sobald genannt oder erfragt; optional Kurzkommentar, Verbesserungsvorschlag und E-Mail.',
       parameters: {
         type: 'object',
         properties: {
@@ -173,7 +173,7 @@ async function execTool(name, rawArgs) {
       const id = await insertInquiry({
         ...args,
         inquiry_type: 'support',
-        subject: args.subject || 'Support',
+        subject: args.subject || 'Kundendienst',
       });
       return JSON.stringify({ ok: true, id, saved: 'support' });
     }
@@ -198,8 +198,8 @@ async function execTool(name, rawArgs) {
 }
 
 /**
- * Runs chat completion with optional tool loop.
- * Returns assistant text (markdown).
+ * Führt den Chat mit optionaler Werkzeug-Schleife aus.
+ * Liefert den Assistententext (Markdown).
  */
 async function runAssistantChat(openai, { baseSystemPrompt, recentMessages }) {
   const poolActive = !!getPool();

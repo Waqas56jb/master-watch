@@ -31,10 +31,10 @@ export default function Login() {
       notify.ok('Angemeldet');
       nav('/dashboard');
     } catch (e2) {
-      const apiMsg = e2?.data?.error || e2.message || 'Login fehlgeschlagen';
+      const apiMsg = e2?.data?.error || e2.message || 'Anmeldung fehlgeschlagen';
       const hint =
         e2?.status === 401
-          ? ' — E-Mail/Passwort prüfen; ggf. `npm run seed-admin` im Backend.'
+          ? ' — E-Mail und Passwort prüfen; bei Bedarf im Backend `npm run seed-admin` ausführen.'
           : '';
       const full = apiMsg + hint;
       setErr(full);
@@ -50,15 +50,15 @@ export default function Login() {
         <div className="auth-brand">
           <BrandLogo variant="auth" aria-hidden />
           <div>
-            <h1>Admin Portal</h1>
-            <p className="muted">MisterWatch · Knowledge &amp; CRM</p>
+            <h1>Verwaltungsportal</h1>
+            <p className="muted">MisterWatch · Wissensdatenbank &amp; Kundenverwaltung</p>
           </div>
         </div>
 
         <div className="auth-features">
           <span className="auth-chip auth-chip--cyan">Live-Daten</span>
           <span className="auth-chip auth-chip--violet">Sicher</span>
-          <span className="auth-chip">Postgres</span>
+          <span className="auth-chip">PostgreSQL</span>
         </div>
 
         <div className="auth-divider" />

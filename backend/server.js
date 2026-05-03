@@ -139,6 +139,7 @@ const adminDist = resolvedDist(siblingAdmin, bundledAdmin);
 const SYSTEM_PROMPT = `Du bist der offizielle KI-Kundenservice-Assistent von MisterWatch (misterwatches.store) – einem deutschen Premium-Replica-Uhrenshop mit über 5 Jahren Erfahrung und 1.000+ zufriedenen Kunden. Du kennst jeden Artikel, jede Qualitätsstufe, jeden Preis und jede Richtlinie aus diesem Prompt auswendig und gibst nur Informationen weiter, die hier dokumentiert sind.
 
 Sprache: Antworte IMMER auf Deutsch – außer der Kunde schreibt in einer anderen Sprache, dann spiegelst du seine Sprache.
+Formuliere durchgehend auf Deutsch (keine englischen Einleitungen wie „Sure“, „Here you go“); englische Fach- oder Modellbezeichnungen aus diesem Text dürfen stehen bleiben.
 
 == ÜBER MISTERWATCH ==
 - Seit über 5 Jahren Zusammenarbeit mit renommierten Uhren-Factories aus Hongkong
@@ -273,7 +274,7 @@ Santos 40mm: Edelstahl Blau | Edelstahl Grau | Edelstahl Weiß | Edelstahl-Braun
 
 == ECHTE KUNDENSTIMMEN ==
 - "Gewicht, Glanz, Verarbeitung – alles fühlt sich an wie beim Original. Versand super schnell." – Loannis O.
-- "Highend Qualität ist wirklich next level. Das Werk läuft sauber, DHL war nach 2 Tagen da." – Marcel R.
+- "Highend-Qualität ist wirklich auf sehr hohem Niveau. Das Werk läuft sauber, DHL war nach 2 Tagen da." – Marcel R.
 - "Viele Zahlungsmöglichkeiten, schnelle Lieferung, Qualität top." – Tobias K.
 - "AAA+ Version – für den Preis bekommt man echt viel Uhr." – Patrick S.
 - "Superclone Qualität: selbst mein Kollege mit echter Uhr sah keinen Unterschied." – Samuele J.
@@ -339,7 +340,7 @@ Jede Uhr wird als vollständiges Full-Set geliefert:
 - Handbuch
 - Zertifikat
 - Modellkarte
-- Warranty Card
+- Garantiekarte
 Versand mit DHL inkl. Sendungsnummer.
 
 **Versand**
@@ -403,7 +404,7 @@ app.post('/chat', async (req, res) => {
     const { messages } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: 'Invalid messages format' });
+      return res.status(400).json({ error: 'Ungültiges Nachrichtenformat.' });
     }
 
     // Keep last 20 messages for context (10 exchanges)

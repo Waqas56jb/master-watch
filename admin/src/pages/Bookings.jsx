@@ -150,7 +150,7 @@ export default function Bookings() {
                         <td className="muted">{fmtDt(row.created_at)}</td>
                         <td>
                           <button type="button" className="btn-ghost btn-tiny" onClick={() => setExpanded(openRow ? null : row.id)}>
-                            {openRow ? 'Zu' : 'Details'}
+                            {openRow ? 'Schließen' : 'Öffnen'}
                           </button>
                         </td>
                       </tr>
@@ -164,7 +164,7 @@ export default function Bookings() {
                                 </span>
                               </div>
                               <label className="field">
-                                Buchungs-/Admin-Notiz
+                                Buchungs- und Verwaltungsnotiz
                                 <textarea
                                   className="crm-notes"
                                   rows={3}

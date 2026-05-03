@@ -19,6 +19,11 @@ function fmtDt(v) {
   }
 }
 
+function anfragetypLabel(t) {
+  const m = { support: 'Kundendienst', lead: 'Interessent', general: 'Allgemein' };
+  return m[t] || t;
+}
+
 export default function Inquiries() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -84,8 +89,8 @@ export default function Inquiries() {
     <div className="page">
       <div className="page-head row">
         <div>
-          <h2 className="page-head-title">Anfragen &amp; Support</h2>
-          <p className="muted">Leads, Support-Tickets · Status &amp; Team-Notizen</p>
+          <h2 className="page-head-title">Anfragen &amp; Kundendienst</h2>
+          <p className="muted">Interessenten, Tickets · Status und Teamnotizen</p>
         </div>
       </div>
 
@@ -102,8 +107,8 @@ export default function Inquiries() {
             </select>
             <select className="crm-select" value={type} onChange={(e) => setType(e.target.value)}>
               <option value="">Alle Typen</option>
-              <option value="support">Support</option>
-              <option value="lead">Lead</option>
+              <option value="support">Kundendienst</option>
+              <option value="lead">Interessent</option>
               <option value="general">Allgemein</option>
             </select>
           </CrmToolbar>
@@ -115,7 +120,7 @@ export default function Inquiries() {
             Daten werden geladen…
           </div>
         ) : !items?.length ? (
-          <EmptyState title="Keine Anfragen" hint="Support- und Lead-Nachrichten aus dem Chat erscheinen hier." />
+          <EmptyState title="Keine Anfragen" hint="Nachrichten aus dem Chat und Kontaktformular erscheinen hier." />
         ) : (
           <motion.div className="table-scroll" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <table className="data-table">
@@ -137,7 +142,7 @@ export default function Inquiries() {
                     <Fragment key={row.id}>
                       <tr>
                         <td>
-                          <span className={`pill-mini type-${row.inquiry_type}`}>{row.inquiry_type}</span>
+                          <span className={`pill-mini type-${row.inquiry_type}`}>{anfragetypLabel(row.inquiry_type)}</span>
                         </td>
                         <td>{subj}</td>
                         <td className="mono-sm">
@@ -164,7 +169,7 @@ export default function Inquiries() {
                         <td className="muted">{fmtDt(row.created_at)}</td>
                         <td>
                           <button type="button" className="btn-ghost btn-tiny" onClick={() => setExpanded(openRow ? null : row.id)}>
-                            {openRow ? 'Zu' : 'Details'}
+                            {openRow ? 'Schließen' : 'Öffnen'}
                           </button>
                         </td>
                       </tr>
@@ -183,7 +188,7 @@ export default function Inquiries() {
                                 ) : null}
                               </div>
                               <label className="field">
-                                Admin-Notiz
+                                Verwaltungsnotiz
                                 <textarea
                                   className="crm-notes"
                                   rows={3}

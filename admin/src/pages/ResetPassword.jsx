@@ -95,7 +95,7 @@ export default function ResetPassword() {
       setStep(1);
       notify.ok('Passwort erfolgreich geändert');
     } catch (e2) {
-      const m = e2?.data?.error || e2.message || 'Reset fehlgeschlagen';
+      const m = e2?.data?.error || e2.message || 'Zurücksetzen fehlgeschlagen';
       setErr(m);
       notify.err(m);
     } finally {
@@ -159,7 +159,7 @@ export default function ResetPassword() {
             {step === 1 ? (
               <form onSubmit={verifyEmail}>
                 <p className="muted" style={{ margin: '0 0 12px', fontSize: 14, lineHeight: 1.5 }}>
-                  Zuerst die Admin-E-Mail bestätigen (wird in der Datenbank geprüft).
+                  Zuerst die E-Mail des Administrator-Kontos bestätigen (Abgleich mit der Datenbank).
                 </p>
                 <label className="field">
                   <span>E-Mail</span>

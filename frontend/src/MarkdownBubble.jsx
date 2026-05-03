@@ -7,7 +7,15 @@ const mdComponents = {
   li: (props) => <li className="md-li" {...props} />,
   strong: (props) => <strong className="md-strong" {...props} />,
   em: (props) => <em className="md-em" {...props} />,
-  a: (props) => <a className="md-a" target="_blank" rel="noopener noreferrer" {...props} />,
+  a: (props) => (
+    <a
+      className="md-a"
+      target="_blank"
+      rel="noopener noreferrer"
+      {...props}
+      title={props.title != null && String(props.title).trim() !== '' ? props.title : 'Öffnet in neuem Tab'}
+    />
+  ),
   pre: (props) => <pre className="md-pre" {...props} />,
   code: ({ inline, className, children, ...props }) => {
     if (inline) {

@@ -62,15 +62,15 @@ function exportStatsCsv(data) {
   if (!data) return;
   const rows = [
     ['Kennzahl', 'Wert'],
-    ['knowledgeTotal', data.knowledgeTotal ?? ''],
-    ['knowledgeActive', data.knowledgeActive ?? ''],
-    ['bookingsTotal', data.bookingsTotal ?? ''],
-    ['bookingsPending', data.bookingsPending ?? ''],
-    ['inquiriesTotal', data.inquiriesTotal ?? ''],
-    ['inquiriesOpen', data.inquiriesOpen ?? ''],
-    ['inquiriesResolved', data.inquiriesResolved ?? ''],
-    ['feedbackTotal', data.feedbackTotal ?? ''],
-    ['feedbackAvg', data.feedbackAvg ?? ''],
+    ['Wissensdatenbank Einträge gesamt', data.knowledgeTotal ?? ''],
+    ['Wissensdatenbank aktiv', data.knowledgeActive ?? ''],
+    ['Buchungen gesamt', data.bookingsTotal ?? ''],
+    ['Buchungen ausstehend', data.bookingsPending ?? ''],
+    ['Anfragen gesamt', data.inquiriesTotal ?? ''],
+    ['Anfragen offen', data.inquiriesOpen ?? ''],
+    ['Anfragen erledigt', data.inquiriesResolved ?? ''],
+    ['Bewertungen gesamt', data.feedbackTotal ?? ''],
+    ['Bewertungen Durchschnitt', data.feedbackAvg ?? ''],
   ];
   const csv = `\uFEFF${rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')}`;
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -166,11 +166,11 @@ export default function Dashboard() {
   const radarData = useMemo(() => {
     if (!data) return [];
     const raw = {
-      'KB aktiv': data.knowledgeActive ?? 0,
-      Chats: chatSum,
-      'Buch. offen': data.bookingsPending ?? 0,
-      'Anfr. offen': data.inquiriesOpen ?? 0,
-      Feedback: data.feedbackTotal ?? 0,
+      'Aktive Einträge (KB)': data.knowledgeActive ?? 0,
+      'Chat-Nachrichten': chatSum,
+      'Offene Buchungen': data.bookingsPending ?? 0,
+      'Offene Anfragen': data.inquiriesOpen ?? 0,
+      Bewertungen: data.feedbackTotal ?? 0,
     };
     const max = Math.max(1, ...Object.values(raw));
     return Object.entries(raw).map(([metric, v]) => ({
@@ -184,7 +184,7 @@ export default function Dashboard() {
     return [
       { name: 'Buchungen', n: data.bookingsTotal ?? 0 },
       { name: 'Anfragen', n: data.inquiriesTotal ?? 0 },
-      { name: 'Feedback', n: data.feedbackTotal ?? 0 },
+      { name: 'Bewertungen', n: data.feedbackTotal ?? 0 },
     ];
   }, [data]);
 
@@ -216,7 +216,7 @@ export default function Dashboard() {
         <div className="dash-toolbar-actions">
           <button type="button" className="btn-secondary btn-sm" onClick={() => exportStatsCsv(data)} disabled={!data}>
             <HiOutlineArrowDownTray size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} aria-hidden />
-            Export CSV
+            CSV exportieren
           </button>
           <button type="button" className="btn-primary btn-sm" onClick={() => void load()}>
             <HiOutlineArrowPath size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} aria-hidden />
@@ -235,9 +235,9 @@ export default function Dashboard() {
       <div className="kpi-grid">
         <KpiCard label="Aktive KB" value={data?.knowledgeActive ?? '—'} sub="Live im Chatbot-Prompt" accent="a" Icon={HiOutlineBookOpen} />
         <KpiCard label="KB gesamt" value={data?.knowledgeTotal ?? '—'} sub="Alle Einträge" accent="b" Icon={HiOutlineRectangleStack} />
-        <KpiCard label="Kategorien" value={catData.length} sub="Klassen im Knowledge-Base" accent="c" Icon={HiOutlineRectangleStack} />
+        <KpiCard label="Kategorien" value={catData.length} sub="Klassen in der Wissensdatenbank" accent="c" Icon={HiOutlineRectangleStack} />
         <KpiCard
-          label="Buchungen pending"
+          label="Buchungen ausstehend"
           value={data?.bookingsPending ?? '—'}
           sub={`Gesamt: ${data?.bookingsTotal ?? '—'}`}
           accent="d"
@@ -250,7 +250,7 @@ export default function Dashboard() {
           accent="e"
           Icon={HiOutlineChatBubbleLeftRight}
         />
-        <KpiCard label="Feedback" value={data?.feedbackTotal ?? '—'} sub={avgRating ? `Ø ${avgRating} / 5` : 'Noch keine Sterne'} accent="f" Icon={HiOutlineStar} />
+        <KpiCard label="Bewertungen" value={data?.feedbackTotal ?? '—'} sub={avgRating ? `Ø ${avgRating} / 5` : 'Noch keine Sterne'} accent="f" Icon={HiOutlineStar} />
       </div>
 
       <div className="chart-card glass chart-card--compact">
@@ -294,7 +294,7 @@ export default function Dashboard() {
         </div>
 
         <div className="chart-card glass">
-          <h3>Knowledge · Kategorien</h3>
+          <h3>Wissensdatenbank · Kategorien</h3>
           <p className="chart-card-sub">Einträge je Kategorie</p>
           <div className="chart-body chart-body-shrink">
             <ResponsiveContainer width="100%" height="100%" minHeight={220}>
@@ -310,8 +310,8 @@ export default function Dashboard() {
         </div>
 
         <div className="chart-card glass">
-          <h3>CRM · Eingänge / Tag</h3>
-          <p className="chart-card-sub">Buchungen + Anfragen + Feedback</p>
+          <h3>Kundenverwaltung · Eingänge pro Tag</h3>
+          <p className="chart-card-sub">Buchungen, Anfragen und Bewertungen</p>
           <div className="chart-body chart-body-shrink">
             <ResponsiveContainer width="100%" height="100%" minHeight={220}>
               <AreaChart data={subLine.length ? subLine : [{ day: '-', eingänge: 0 }]} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -334,7 +334,7 @@ export default function Dashboard() {
 
       <div className="chart-card glass">
         <h3>Aktivität · Zeitreihe</h3>
-        <p className="chart-card-sub">Neue KB-Einträge vs. Chat (gewählter Zeitraum, max. 30 Tage Daten)</p>
+        <p className="chart-card-sub">Neue Wissenseinträge und Chats (gewählter Zeitraum, höchstens 30 Tage)</p>
         <div className="chart-body tall">
           <ResponsiveContainer width="100%" height="100%" minHeight={260}>
             <LineChart data={activity.length ? activity : [{ day: '-', knowledge: 0, chats: 0 }]} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
@@ -343,8 +343,8 @@ export default function Dashboard() {
               <YAxis stroke={AXIS} tick={{ fontSize: 10 }} allowDecimals={false} width={28} />
               <Tooltip {...chartTip} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="knowledge" name="KB neu" stroke={GOLD} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="chats" name="Chats" stroke="#a3a3a3" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="knowledge" name="Neue Einträge (KB)" stroke={GOLD} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="chats" name="Chat-Nachrichten" stroke="#a3a3a3" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -360,7 +360,7 @@ export default function Dashboard() {
                 <PolarGrid stroke={GRID} />
                 <PolarAngleAxis dataKey="metric" tick={{ fill: AXIS, fontSize: 10 }} />
                 <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                <Radar name="%" dataKey="v" stroke={GOLD} fill={GOLD} fillOpacity={0.22} strokeWidth={1.75} />
+                <Radar name="Anteil" dataKey="v" stroke={GOLD} fill={GOLD} fillOpacity={0.22} strokeWidth={1.75} />
                 <Tooltip {...chartTip} formatter={(v) => [`${v}%`, '']} />
               </RadarChart>
             </ResponsiveContainer>
@@ -369,7 +369,7 @@ export default function Dashboard() {
 
         <div className="chart-card glass">
           <h3>Bestand</h3>
-          <p className="chart-card-sub">Buchungen · Anfragen · Feedback</p>
+          <p className="chart-card-sub">Buchungen, Anfragen und Bewertungen</p>
           <div className="chart-body chart-body-shrink">
             <ResponsiveContainer width="100%" height="100%" minHeight={240}>
               <BarChart data={crmChartData} layout="vertical" margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
@@ -405,7 +405,7 @@ export default function Dashboard() {
         </div>
 
         <div className="chart-card glass">
-          <h3>Feedback</h3>
+          <h3>Bewertungen</h3>
           <p className="chart-card-sub">{avgRating ? `${data?.feedbackTotal} Bewertungen` : 'Noch keine Daten'}</p>
           <div className="chart-body chart-body-shrink">
             <ResponsiveContainer width="100%" height="100%" minHeight={200}>

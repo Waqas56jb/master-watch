@@ -1,6 +1,6 @@
 import { watchLogoUrl } from '../brand.js';
 
-/** Remote watch graphic (CDN). Decorative when `alt` left empty next to brand text. */
+/** Logo (Uhr) per CDN. Ohne alt-Text neben dem Markennamen rein dekorativ. */
 export default function BrandLogo({ variant = 'sidebar', className = '', alt = '', ...rest }) {
   const isAuth = variant === 'auth';
   const display = isAuth ? 48 : 40;
