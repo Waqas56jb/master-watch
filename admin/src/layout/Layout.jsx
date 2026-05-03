@@ -12,13 +12,8 @@ import {
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '../AuthContext.jsx';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import BrandLogo from '../components/BrandLogo.jsx';
-
-function initialSidebarOpen() {
-  if (typeof window === 'undefined') return true;
-  return window.innerWidth > 900;
-}
 
 const navGroups = [
   {
@@ -70,16 +65,6 @@ export default function Layout({ children }) {
   const location = useLocation();
   const { email, logout } = useAuth();
   const nav = useNavigate();
-  const [navOpen, setNavOpen] = useState(initialSidebarOpen);
-
-  useEffect(() => {
-    function onResize() {
-      if (window.innerWidth > 900) return;
-      setNavOpen(false);
-    }
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   const meta = ROUTE_META[location.pathname] || { title: 'Admin', sub: '' };
 
@@ -88,21 +73,11 @@ export default function Layout({ children }) {
   function goLogin() {
     logout();
     nav('/login');
-    setNavOpen(false);
-  }
-
-  function toggleNav() {
-    setNavOpen((v) => !v);
   }
 
   return (
-    <div className={`layout-root ${navOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-      <div
-        className={`sidebar-backdrop ${navOpen ? 'open' : ''}`}
-        onClick={() => setNavOpen(false)}
-        aria-hidden={!navOpen}
-      />
-      <aside className={`sidebar ${navOpen ? 'open' : ''}`}>
+    <div className="layout-root">
+      <aside className="sidebar">
         <div className="sidebar-brand">
           <BrandLogo variant="sidebar" aria-hidden />
           <div>
@@ -121,7 +96,6 @@ export default function Layout({ children }) {
                     key={l.to}
                     to={l.to}
                     className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                    onClick={() => window.innerWidth <= 900 && setNavOpen(false)}
                     end={l.to === '/dashboard'}
                   >
                     <Ico className="sidebar-ico-ri" aria-hidden />
@@ -147,17 +121,6 @@ export default function Layout({ children }) {
 
       <div className="layout-main-wrap">
         <header className="topbar">
-          <button
-            type="button"
-            className={`menu-toggle ${navOpen ? 'is-open' : ''}`}
-            onClick={toggleNav}
-            aria-label={navOpen ? 'Navigation schließen' : 'Navigation öffnen'}
-            aria-expanded={navOpen}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
           <div className="topbar-main">
             <div className="topbar-titles">
               <h1 className="topbar-title">{meta.title}</h1>
