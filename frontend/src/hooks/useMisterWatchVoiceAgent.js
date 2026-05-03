@@ -424,23 +424,26 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         /* ignore */
       }
 
-      /* 3. Mic capture — full quality constraints for noise/echo suppression */
+      /* 3. Mic — `{ audio: true }` first (WordPress / iframe / embedded browsers often reject strict constraints). */
       let stream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-            sampleRate: { ideal: 24000 },
-          },
-        });
-      } catch (micErr) {
-        if (micErr.name === "NotAllowedError" || micErr.name === "PermissionDeniedError") {
-          throw new Error("Microphone access denied. Please allow mic permission in your browser and try again.");
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (micLoose) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1,
+            },
+          });
+        } catch (micErr) {
+          if (micErr.name === "NotAllowedError" || micErr.name === "PermissionDeniedError") {
+            throw new Error("Microphone access denied. Please allow mic permission in your browser and try again.");
+          }
+          throw new Error("Could not access microphone: " + (micErr.message || micLoose.message));
         }
-        throw new Error("Could not access microphone: " + micErr.message);
       }
       streamRef.current = stream;
 

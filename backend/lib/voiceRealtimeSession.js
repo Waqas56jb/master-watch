@@ -1,9 +1,9 @@
 /**
  * OpenAI Realtime (speech-to-speech) for MisterWatch.
  *
- * Minting: OpenAI recommends a small POST body for `/v1/realtime/sessions` (ephemeral key).
- * Full instructions + tools are sent from the browser via `session.update` after the
- * WebSocket connects (same pattern as voiceagent_backend).
+ * Minting: POST `/v1/realtime/sessions` uses a **compact** instruction block + tools so the
+ * browser does not send a huge `session.update` (WordPress / CSP / embed‑sensitive).
+ * If full mint fails, the client may still receive a trimmed `clientSession` for WS fallback.
  *
  * Wire audio: pcm16 @ 24 kHz (no Opus flag on Realtime WebSocket).
  */
@@ -14,6 +14,18 @@ const { CHAT_TOOLS } = require('./chatAssistant');
 
 /** Realtime `session.update` over WebSocket can fail if this is too large; mint-on-server carries the same cap. */
 const MAX_INSTRUCTION_CHARS = 8_000;
+
+/**
+ * Short mint-only instructions (WordPress / embed safe). Full catalog lives in text chat;
+ * voice directs users to misterwatches.store and WhatsApp for detail.
+ */
+const VOICE_MINT_INSTRUCTIONS = `
+Du bist der offizielle deutschsprachige Voice-Assistent von MisterWatch (misterwatches.store).
+Du hilfst bei Uhren, Qualitätsstufen (AAA+, Highend, Superclone), Preisen grob, Versand (DHL, EU),
+Zahlung (PayPal, Klarna, Karte, Bank, Twint) und Bestellablauf. Antworte kurz und natürlich.
+Für Modelllisten, exakte Preise und Bestellabschluss: verweise auf den Shop und WhatsApp +49 157 55483605.
+Nutze die bereitgestellten Tools für Buchung, Support-Ticket, Lead und Bewertung sobald der Nutzer genug gesagt hat.
+`.trim();
 
 /** Strict German + spoken-output rules (same shop context as text chat). */
 const VOICE_DE_SUFFIX = `
@@ -56,24 +68,32 @@ function buildMinimalMintPayload() {
 }
 
 /**
- * Full session on POST /v1/realtime/sessions so the browser does not send a huge `session.update`
- * (OpenAI often rejects oversized WS payloads → WS `error` → broken voice on slow/embed clients).
+ * Compact POST body for `/v1/realtime/sessions` — short instructions + same tools as WS fallback.
+ * Avoids pasting the full text-chat system prompt into the mint body (embed / OpenAI limits).
  */
 function buildOpenAiMintBody(clientSession) {
   const base = buildMinimalMintPayload();
-  if (!clientSession || typeof clientSession !== 'object') return base;
+  const instructions = `${VOICE_MINT_INSTRUCTIONS}\n\n${VOICE_DE_SUFFIX}`.trim();
   const body = {
     ...base,
-    modalities: clientSession.modalities,
-    instructions: clientSession.instructions,
-    input_audio_format: clientSession.input_audio_format,
-    output_audio_format: clientSession.output_audio_format,
-    input_audio_transcription: clientSession.input_audio_transcription,
-    turn_detection: clientSession.turn_detection,
-    temperature: clientSession.temperature,
-    max_output_tokens: clientSession.max_response_output_tokens,
+    modalities: ['text', 'audio'],
+    instructions,
+    input_audio_format: 'pcm16',
+    output_audio_format: 'pcm16',
+    input_audio_transcription: {
+      model: 'whisper-1',
+      language: 'de',
+    },
+    turn_detection: {
+      type: 'server_vad',
+      threshold: 0.45,
+      prefix_padding_ms: 200,
+      silence_duration_ms: 600,
+    },
+    temperature: 0.8,
+    max_output_tokens: 400,
   };
-  if (Array.isArray(clientSession.tools) && clientSession.tools.length > 0) {
+  if (clientSession && Array.isArray(clientSession.tools) && clientSession.tools.length > 0) {
     body.tools = clientSession.tools;
     body.tool_choice = clientSession.tool_choice || 'auto';
   }
