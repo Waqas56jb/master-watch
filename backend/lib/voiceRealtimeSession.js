@@ -12,7 +12,8 @@ const { getPool } = require('../db');
 const { buildFullSystemPrompt, fetchCrmToolsInstructions } = require('./chatbotPrompt');
 const { CHAT_TOOLS } = require('./chatAssistant');
 
-const MAX_INSTRUCTION_CHARS = 14_000;
+/** Realtime `session.update` over WebSocket can fail if this is too large; mint-on-server carries the same cap. */
+const MAX_INSTRUCTION_CHARS = 8_000;
 
 /** Strict German + spoken-output rules (same shop context as text chat). */
 const VOICE_DE_SUFFIX = `
@@ -55,15 +56,42 @@ function buildMinimalMintPayload() {
 }
 
 /**
+ * Full session on POST /v1/realtime/sessions so the browser does not send a huge `session.update`
+ * (OpenAI often rejects oversized WS payloads → WS `error` → broken voice on slow/embed clients).
+ */
+function buildOpenAiMintBody(clientSession) {
+  const base = buildMinimalMintPayload();
+  if (!clientSession || typeof clientSession !== 'object') return base;
+  const body = {
+    ...base,
+    modalities: clientSession.modalities,
+    instructions: clientSession.instructions,
+    input_audio_format: clientSession.input_audio_format,
+    output_audio_format: clientSession.output_audio_format,
+    input_audio_transcription: clientSession.input_audio_transcription,
+    turn_detection: clientSession.turn_detection,
+    temperature: clientSession.temperature,
+    max_output_tokens: clientSession.max_response_output_tokens,
+  };
+  if (Array.isArray(clientSession.tools) && clientSession.tools.length > 0) {
+    body.tools = clientSession.tools;
+    body.tool_choice = clientSession.tool_choice || 'auto';
+  }
+  return body;
+}
+
+/**
  * Full `session` object for the client's `session.update` WebSocket event.
  * Include `type: "realtime"` for GA-compatible clients.
  */
-async function buildClientWebsocketSession() {
+/** @param {{ maxInstructionChars?: number }} [opts] */
+async function buildClientWebsocketSession(opts = {}) {
+  const cap = Number(opts.maxInstructionChars) > 0 ? Number(opts.maxInstructionChars) : MAX_INSTRUCTION_CHARS;
   const base = await buildFullSystemPrompt();
   const crm = (await fetchCrmToolsInstructions()).trim();
   let instructions = [base, crm, VOICE_DE_SUFFIX].filter(Boolean).join('\n\n').trim();
-  if (instructions.length > MAX_INSTRUCTION_CHARS) {
-    instructions = `${instructions.slice(0, MAX_INSTRUCTION_CHARS)}\n\n[…gekürzt…]`;
+  if (instructions.length > cap) {
+    instructions = `${instructions.slice(0, cap)}\n\n[…gekürzt…]`;
   }
 
   const poolActive = Boolean(getPool());
@@ -107,6 +135,7 @@ function realtimeWireFormatMeta() {
 
 module.exports = {
   buildMinimalMintPayload,
+  buildOpenAiMintBody,
   buildClientWebsocketSession,
   realtimeWireFormatMeta,
   realtimeModel,

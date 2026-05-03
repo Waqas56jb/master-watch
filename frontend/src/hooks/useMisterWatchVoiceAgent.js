@@ -381,6 +381,8 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
   /* ── START voice agent ────────────────────────────────────── */
   const start = useCallback(async () => {
     try {
+      voiceGenRef.current += 1;
+      const voiceSid = voiceGenRef.current;
       agentResponseActiveRef.current = false;
       setStatus("connecting");
       setError(null);
@@ -399,8 +401,10 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         error: sessionError,
         model: modelFromServer,
         clientSession,
+        sessionConfiguredAtMint,
       } = sessionJson;
       if (sessionError) throw new Error(JSON.stringify(sessionError));
+      const configuredAtMint = Boolean(sessionConfiguredAtMint);
 
       const realtimeModel =
         typeof modelFromServer === "string" && modelFromServer.trim()
@@ -425,12 +429,11 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation:  true,
-            noiseSuppression:  true,
-            autoGainControl:   true,
-            sampleRate:        24000,
-            channelCount:      1,
-            latency:           0,            // request lowest possible latency
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: { ideal: 24000 },
           },
         });
       } catch (micErr) {
@@ -468,37 +471,39 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (voiceSid !== voiceGenRef.current) return;
         const serverSession =
           clientSession && typeof clientSession === "object" && !Array.isArray(clientSession)
             ? clientSession
             : null;
-        const sessionPayload = serverSession
-          ? serverSession
-          : {
-              modalities: ["text", "audio"],
-              instructions: VOICE_INSTRUCTIONS,
-              voice: "echo",
-              input_audio_format: "pcm16",
-              output_audio_format: "pcm16",
-              input_audio_transcription: { model: "whisper-1", language: "de" },
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.45,
-                prefix_padding_ms: 200,
-                silence_duration_ms: 600,
-              },
-              tools: VOICE_TOOLS,
-              tool_choice: VOICE_TOOLS.length ? "auto" : "none",
-              temperature: 0.8,
-              max_response_output_tokens: 150,
-            };
+        if (!configuredAtMint) {
+          const sessionPayload = serverSession
+            ? serverSession
+            : {
+                modalities: ["text", "audio"],
+                instructions: VOICE_INSTRUCTIONS,
+                voice: "echo",
+                input_audio_format: "pcm16",
+                output_audio_format: "pcm16",
+                input_audio_transcription: { model: "whisper-1", language: "de" },
+                turn_detection: {
+                  type: "server_vad",
+                  threshold: 0.45,
+                  prefix_padding_ms: 200,
+                  silence_duration_ms: 600,
+                },
+                tools: VOICE_TOOLS,
+                tool_choice: VOICE_TOOLS.length ? "auto" : "none",
+                temperature: 0.8,
+                max_response_output_tokens: 150,
+              };
+          ws.send(JSON.stringify({
+            type: "session.update",
+            session: sessionPayload,
+          }));
+        }
 
-        ws.send(JSON.stringify({
-          type: "session.update",
-          session: sessionPayload,
-        }));
-
-        /* Warm greeting kick-off (after session.update, same order as voiceagent frontend) */
+        /* Warm greeting kick-off (after session.update when used, same order as voiceagent frontend) */
         ws.send(JSON.stringify({
           type: "response.create",
           response: {

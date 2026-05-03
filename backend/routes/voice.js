@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   buildMinimalMintPayload,
+  buildOpenAiMintBody,
   buildClientWebsocketSession,
   realtimeWireFormatMeta,
   realtimeModel,
@@ -15,8 +16,8 @@ const OPENAI_SESSION_URL =
 
 /**
  * POST /api/voice/session
- * Mints ephemeral key (minimal body, like voiceagent_backend). Returns `clientSession`
- * for the browser to send as `session.update` after the WebSocket opens.
+ * Mints ephemeral key. Prefer configuring the Realtime session on this POST so the browser
+ * avoids a large `session.update` over WebSocket (fragile on embeds / strict WS limits).
  */
 router.post('/session', async (req, res) => {
   try {
@@ -25,19 +26,37 @@ router.post('/session', async (req, res) => {
       return res.status(503).json({ error: 'OPENAI_API_KEY fehlt auf dem Server.' });
     }
 
-    const mintPayload = buildMinimalMintPayload();
     const clientSession = await buildClientWebsocketSession();
+    const fullMint = buildOpenAiMintBody(clientSession);
+    const minimalMint = buildMinimalMintPayload();
 
-    const response = await fetch(OPENAI_SESSION_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${String(key).trim()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(mintPayload),
-    });
+    async function mintOpenAI(body) {
+      return fetch(OPENAI_SESSION_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${String(key).trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    }
 
-    const data = await response.json().catch(() => ({}));
+    let response = await mintOpenAI(fullMint);
+    let data = await response.json().catch(() => ({}));
+    let sessionConfiguredAtMint = response.ok;
+    let usedFallbackMint = false;
+
+    if (!response.ok) {
+      usedFallbackMint = true;
+      console.warn(
+        '[voice/session] Full mint rejected; retrying minimal mint. Status:',
+        response.status,
+        JSON.stringify(data).slice(0, 400)
+      );
+      response = await mintOpenAI(minimalMint);
+      data = await response.json().catch(() => ({}));
+      sessionConfiguredAtMint = false;
+    }
 
     if (!response.ok) {
       console.error('[voice/session] OpenAI error:', response.status, JSON.stringify(data).slice(0, 800));
@@ -53,11 +72,17 @@ router.post('/session', async (req, res) => {
       return res.status(502).json({ error: 'Ungültige Antwort von OpenAI (kein client_secret).' });
     }
 
+    const clientSessionOut = sessionConfiguredAtMint
+      ? null
+      : usedFallbackMint
+        ? await buildClientWebsocketSession({ maxInstructionChars: 4500 })
+        : clientSession;
+
     return res.json({
       ephemeralKey,
-      model: data.model || mintPayload.model || realtimeModel(),
-      clientSession,
-      sessionConfiguredAtMint: false,
+      model: data.model || fullMint.model || realtimeModel(),
+      clientSession: clientSessionOut,
+      sessionConfiguredAtMint,
       audio: realtimeWireFormatMeta(),
     });
   } catch (err) {
