@@ -81,21 +81,29 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
   const toolCallBufferRef  = useRef({});
   const browserAbortRef    = useRef(false);
   const browserRecRef      = useRef(null);
+  /** True while assistant has an in-flight streamed response (audio/text). */
+  const agentResponseActiveRef = useRef(false);
+  /** Bumped on cleanup and on each new WS — stale handlers ignore onclose/onerror. */
+  const voiceGenRef            = useRef(0);
 
   /* ── Play PCM16 audio chunk ───────────────────────────────── */
   const playChunk = useCallback((base64Audio) => {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    const float32 = base64ToFloat32(base64Audio);
-    const buf  = ctx.createBuffer(1, float32.length, 24000);
-    buf.copyToChannel(float32, 0);
-    const src  = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    const now   = ctx.currentTime;
-    const start = Math.max(now, nextPlayTimeRef.current);
-    src.start(start);
-    nextPlayTimeRef.current = start + buf.duration;
+    try {
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+      const float32 = base64ToFloat32(base64Audio);
+      const buf  = ctx.createBuffer(1, float32.length, 24000);
+      buf.copyToChannel(float32, 0);
+      const src  = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      const now   = ctx.currentTime;
+      const start = Math.max(now, nextPlayTimeRef.current);
+      src.start(start);
+      nextPlayTimeRef.current = start + buf.duration;
+    } catch (e) {
+      console.warn("[voice] playChunk:", e?.message || e);
+    }
   }, []);
 
   /* ── Interrupt: stop audio queue immediately ──────────────── */
@@ -157,18 +165,12 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         setStatus("listening");
         setAgentTranscript("");
         interruptPlayback();
-        // Tell server to cancel current response mid-generation
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
-          // Truncate so server knows how much audio the user actually heard
-          if (audioItemIdRef.current) {
-            wsRef.current.send(JSON.stringify({
-              type:          "conversation.item.truncate",
-              item_id:       audioItemIdRef.current,
-              content_index: 0,
-              audio_end_ms:  0,
-            }));
-            audioItemIdRef.current = null;
+        /* Only cancel an active assistant turn — cancel+truncate(0) on noise breaks the session. */
+        if (wsRef.current?.readyState === WebSocket.OPEN && agentResponseActiveRef.current) {
+          try {
+            wsRef.current.send(JSON.stringify({ type: "response.cancel" }));
+          } catch {
+            /* ignore */
           }
         }
         break;
@@ -178,6 +180,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
         break;
 
       case "response.created":
+        agentResponseActiveRef.current = true;
         setStatus("speaking");
         break;
 
@@ -211,13 +214,30 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       }
 
       case "response.done":
+        agentResponseActiveRef.current = false;
         setStatus("listening");
         setUserTranscript("");
         audioItemIdRef.current = null;
         break;
 
+      case "response.cancelled":
+      case "response.failed":
+        agentResponseActiveRef.current = false;
+        break;
+
       case "error": {
         const err = msg.error;
+        const code = err && typeof err === "object" ? err.code : null;
+        /* Benign / recoverable — do not tear down the whole widget. */
+        const benign =
+          code === "input_audio_buffer_commit_empty" ||
+          code === "conversation_already_has_active_response" ||
+          (typeof err?.message === "string" &&
+            /no active response|already has an active response|nothing to cancel/i.test(err.message));
+        if (benign) {
+          console.warn("Realtime WS (non-fatal):", err);
+          break;
+        }
         const detail =
           typeof err?.message === "string"
             ? err.message
@@ -227,6 +247,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
                 ? JSON.stringify(err)
                 : "Voice agent error";
         console.error("Realtime WS error:", err);
+        agentResponseActiveRef.current = false;
         setError(detail);
         setStatus("error");
         break;
@@ -239,6 +260,8 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
 
   /* ── Cleanup everything ───────────────────────────────────── */
   const cleanup = useCallback(() => {
+    voiceGenRef.current += 1;
+    agentResponseActiveRef.current = false;
     browserAbortRef.current = true;
     try {
       browserRecRef.current?.stop?.();
@@ -257,11 +280,14 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
     streamRef.current = null;
 
     if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
+      try {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      } catch {
+        /* ignore */
+      }
       wsRef.current = null;
     }
-
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current       = null;
     nextPlayTimeRef.current   = 0;
@@ -376,6 +402,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
   /* ── START voice agent ────────────────────────────────────── */
   const start = useCallback(async () => {
     try {
+      agentResponseActiveRef.current = false;
       setStatus("connecting");
       setError(null);
       setUserTranscript("");
@@ -508,16 +535,21 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       ws.onmessage = (e) => handleMessage(e.data);
 
       ws.onerror = () => {
+        if (voiceSid !== voiceGenRef.current) return;
         setError("Connection to voice service failed. Please try again.");
         setStatus("error");
         cleanup();
       };
 
       ws.onclose = (e) => {
-        // 1000 = normal close, 1001 = going away — don't treat as error
-        if (e.code !== 1000 && e.code !== 1001) {
-          setError(`Voice session ended unexpectedly (code ${e.code}).`);
+        if (voiceSid !== voiceGenRef.current) return;
+        const okCode = e.code === 1000 || e.code === 1001;
+        /* 1005 = no close frame (browser / script close). */
+        if (!okCode && e.code !== 1005) {
+          const reason = typeof e.reason === "string" && e.reason.trim() ? `: ${e.reason.trim()}` : "";
+          setError(`Voice-Verbindung getrennt (Code ${e.code})${reason}`);
         }
+        agentResponseActiveRef.current = false;
         setStatus("idle");
       };
 
