@@ -1,26 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-
-/** Same origin rules as chat widget (`App.jsx` / `getChatUrl`). */
-function voiceApi(path) {
-  const p = path.startsWith("/") ? path : `/${path}`;
-  let o = String(import.meta.env.VITE_API_URL || "").trim().replace(/\/$/, "");
-  if (import.meta.env.DEV && typeof window !== "undefined" && o) {
-    try {
-      if (new URL(o).origin === window.location.origin) o = "";
-    } catch {
-      o = "";
-    }
-  }
-  if (typeof window !== "undefined") {
-    const h = window.location.hostname;
-    const loop = h === "localhost" || h === "127.0.0.1" || h === "::1";
-    if (loop) {
-      const port = String(window.location.port || "");
-      if (port === "5173" || port === "3000") o = "";
-    }
-  }
-  return o ? `${o}${p}` : p;
-}
+import { apiUrl } from "../apiRoot.js";
 
 const VOICE_TOOLS = [];
 
@@ -129,7 +108,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
 
   const executeToolCall = useCallback(async (callId, name, argsStr) => {
     try {
-      const res = await fetch(voiceApi("/api/voice/execute-tool"), {
+      const res = await fetch(apiUrl("/api/voice/execute-tool"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, arguments: argsStr, token: null }),
@@ -409,7 +388,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       setAgentTranscript("");
 
       /* 1. Ephemeral key from backend (keeps real API key hidden) */
-      const res = await fetch(voiceApi("/api/voice/session"), { method: "POST" });
+      const res = await fetch(apiUrl("/api/voice/session"), { method: "POST" });
       if (!res.ok) {
         await runBrowserVoiceSession(fetchChatReply);
         return;

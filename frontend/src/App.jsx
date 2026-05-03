@@ -1,53 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
 import VoiceAgent from './components/VoiceAgent.jsx';
+import { getApiRoot } from './apiRoot.js';
 
 /**
- * API-Basis für Chat und Theme:
- * - Vite-Entwicklung: `VITE_API_URL` leer → relative URLs → Proxy zum lokalen Backend.
- * - Produktionsbundle auf localhost:3000 (Monolith): eingebettete `VITE_API_URL` ignorieren → gleiche Quelle `/chat`.
- * - Vorschau auf anderem localhost-Port: lokales Backend (Port 3000).
- * - Echtes Deployment: `VITE_API_URL` setzen, wenn Widget und API unterschiedliche Domains haben.
+ * API-Basis: siehe `apiRoot.js` (`VITE_API_URL`, WordPress `window.__MW_CHAT_API_ROOT__`).
  */
-const DEFAULT_LOCAL_API = 'http://127.0.0.1:3000';
-
-function isLoopbackHostname(hostname) {
-  if (!hostname) return false;
-  const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, '');
-  return h === 'localhost' || h === '127.0.0.1' || h === '::1';
-}
-
-function stripRemoteWhenLocalhost(origin) {
-  if (typeof window === 'undefined') return origin;
-  if (!isLoopbackHostname(window.location.hostname)) return origin;
-  const o = String(origin || '').trim();
-  if (!o) return o;
-  try {
-    const u = new URL(o);
-    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return origin;
-    return '';
-  } catch {
-    return origin;
-  }
-}
-
-function getApiRoot() {
-  const env = String(import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
-
-  if (import.meta.env.DEV) {
-    return stripRemoteWhenLocalhost(env);
-  }
-
-  // Produktionsbundle: auf Loopback keine eingebettete Remote-`VITE_API_URL` verwenden.
-  if (typeof window !== 'undefined' && isLoopbackHostname(window.location.hostname)) {
-    const port = String(window.location.port || '');
-    if (port === '3000') return '';
-    return DEFAULT_LOCAL_API;
-  }
-
-  if (env) return env;
-  return '';
-}
 
 function getChatUrl() {
   const r = getApiRoot();
