@@ -1,14 +1,13 @@
 /**
  * API origin for admin fetch() calls.
  *
- * Local `npm run dev` (Vite): leave VITE_API_BASE / VITE_PUBLIC_API_URL unset → relative `/api/...`
- * is proxied to http://localhost:3000 (see admin/vite.config.js).
+ * Local `npm run dev` (Vite): leave API URL vars unset → relative `/api/...` is proxied (see admin/vite.config.js).
  *
  * Local `vite preview` / prod build opened at localhost: no env → http://127.0.0.1:3000.
  *
  * Production monolith (API + admin same host): leave unset → relative `/api/...`.
  *
- * Standalone admin (different host): set VITE_API_BASE or VITE_PUBLIC_API_URL at build time (no trailing slash).
+ * Standalone admin (different host): set `VITE_API_URL` (same as frontend) or `VITE_API_BASE` / `VITE_PUBLIC_API_URL` at build time (no trailing slash).
  */
 const DEFAULT_LOCAL_API = 'http://127.0.0.1:3000';
 
@@ -33,10 +32,16 @@ function stripRemoteWhenLocalhost(origin) {
   }
 }
 
+function apiEnvBase() {
+  let b = String(import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
+  if (!b) b = String(import.meta.env.VITE_API_BASE || '').trim().replace(/\/$/, '');
+  if (!b) b = String(import.meta.env.VITE_PUBLIC_API_URL || '').trim().replace(/\/$/, '');
+  return b;
+}
+
 function resolveApiOrigin() {
   if (import.meta.env.DEV) {
-    let b = String(import.meta.env.VITE_API_BASE || '').trim().replace(/\/$/, '');
-    if (!b) b = String(import.meta.env.VITE_PUBLIC_API_URL || '').trim().replace(/\/$/, '');
+    let b = apiEnvBase();
     if (typeof window !== 'undefined' && b) {
       try {
         if (new URL(b).origin === window.location.origin) b = '';
@@ -54,8 +59,7 @@ function resolveApiOrigin() {
     return DEFAULT_LOCAL_API;
   }
 
-  let b = String(import.meta.env.VITE_API_BASE || '').trim().replace(/\/$/, '');
-  if (!b) b = String(import.meta.env.VITE_PUBLIC_API_URL || '').trim().replace(/\/$/, '');
+  let b = apiEnvBase();
   if (typeof window !== 'undefined' && b) {
     try {
       if (new URL(b).origin === window.location.origin) b = '';
