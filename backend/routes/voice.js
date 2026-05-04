@@ -11,6 +11,10 @@ const { executeVoiceCrmTool } = require('../lib/chatAssistant');
 
 const router = express.Router();
 
+/** Bump via env on deploy to prove Vercel runs this file (see Vercel logs for `[voice/session]`). */
+const VOICE_ROUTE_REVISION =
+  String(process.env.VOICE_ROUTE_REVISION || '').trim() || 'mw-voice-route-v3-2026-02';
+
 const OPENAI_SESSION_URL =
   String(process.env.OPENAI_REALTIME_SESSION_URL || '').trim() ||
   'https://api.openai.com/v1/realtime/sessions';
@@ -22,6 +26,8 @@ const OPENAI_SESSION_URL =
  */
 router.post('/session', async (req, res) => {
   try {
+    console.log(`[voice/session] ${VOICE_ROUTE_REVISION} — request received`);
+
     const key = process.env.OPENAI_API_KEY;
     if (!key || !String(key).trim()) {
       return res.status(503).json({ error: 'OPENAI_API_KEY fehlt auf dem Server.' });
@@ -91,6 +97,21 @@ router.post('/session', async (req, res) => {
     }
 
     const clientSessionOut = sessionConfiguredAtMint ? null : buildLightWebSocketSession(clientSession);
+
+    const clientSessionJsonBytes = clientSessionOut ? Buffer.byteLength(JSON.stringify(clientSessionOut), 'utf8') : 0;
+    const instructionsChars =
+      clientSessionOut && typeof clientSessionOut.instructions === 'string'
+        ? clientSessionOut.instructions.length
+        : 0;
+    console.log(
+      `[voice/session] ${VOICE_ROUTE_REVISION} ok — sessionConfiguredAtMint=${sessionConfiguredAtMint} ` +
+        `clientSessionJsonBytes=${clientSessionJsonBytes} instructionsChars=${instructionsChars} ` +
+        `(light fallback uses ~1.5–3k chars instructions, not catalog; if instructionsChars > 8000 see deployment)`
+    );
+
+    res.setHeader('X-MW-Voice-Route', VOICE_ROUTE_REVISION);
+    res.setHeader('X-MW-Voice-Session-Configured', sessionConfiguredAtMint ? '1' : '0');
+    res.setHeader('X-MW-Voice-ClientSession-Bytes', String(clientSessionJsonBytes));
 
     return res.json({
       ephemeralKey,
