@@ -3,7 +3,7 @@
  *
  * Minting: POST `/v1/realtime/sessions` uses a **compact** instruction block + tools so the
  * browser does not send a huge `session.update` (WordPress / CSP / embed‑sensitive).
- * If full mint fails, the client may still receive a trimmed `clientSession` for WS fallback.
+ * If mint fails after a no-tools retry, the client receives a compact `clientSession` for one small `session.update`.
  *
  * Wire audio: pcm16 @ 24 kHz (no Opus flag on Realtime WebSocket).
  */
@@ -46,6 +46,14 @@ function chatToolsToRealtime(tools) {
     description: t.function.description,
     parameters: t.function.parameters,
   }));
+}
+
+/** Tools + tool_choice for mint / light WS — no DB prompt (never load catalog for POST /voice/session). */
+function buildMintToolSourceSession() {
+  const poolActive = Boolean(getPool());
+  const tools = poolActive ? chatToolsToRealtime(CHAT_TOOLS) : [];
+  const tool_choice = tools.length ? 'auto' : 'none';
+  return { tools, tool_choice };
 }
 
 function realtimeModel() {
@@ -188,6 +196,7 @@ function realtimeWireFormatMeta() {
 module.exports = {
   buildMinimalMintPayload,
   buildOpenAiMintBody,
+  buildMintToolSourceSession,
   buildClientWebsocketSession,
   buildLightWebSocketSession,
   realtimeWireFormatMeta,

@@ -2,7 +2,7 @@ const express = require('express');
 const {
   buildMinimalMintPayload,
   buildOpenAiMintBody,
-  buildClientWebsocketSession,
+  buildMintToolSourceSession,
   buildLightWebSocketSession,
   realtimeWireFormatMeta,
   realtimeModel,
@@ -27,17 +27,22 @@ router.post('/session', async (req, res) => {
       return res.status(503).json({ error: 'OPENAI_API_KEY fehlt auf dem Server.' });
     }
 
-    const clientSession = await buildClientWebsocketSession();
+    const clientSession = buildMintToolSourceSession();
     const fullMint = buildOpenAiMintBody(clientSession);
     const minimalMint = buildMinimalMintPayload();
 
     async function mintOpenAI(body) {
+      const headers = {
+        Authorization: `Bearer ${String(key).trim()}`,
+        'Content-Type': 'application/json',
+      };
+      const model = body?.model || fullMint.model || realtimeModel();
+      if (/preview/i.test(String(model))) {
+        headers['OpenAI-Beta'] = 'realtime=v1';
+      }
       return fetch(OPENAI_SESSION_URL, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${String(key).trim()}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(body),
       });
     }
@@ -47,8 +52,22 @@ router.post('/session', async (req, res) => {
     let sessionConfiguredAtMint = response.ok;
 
     if (!response.ok) {
+      const mintNoTools = { ...fullMint };
+      delete mintNoTools.tools;
+      delete mintNoTools.tool_choice;
       console.warn(
-        '[voice/session] Full mint rejected; retrying minimal mint. Status:',
+        '[voice/session] Full mint rejected; retrying without tools. Status:',
+        response.status,
+        JSON.stringify(data).slice(0, 400)
+      );
+      response = await mintOpenAI(mintNoTools);
+      data = await response.json().catch(() => ({}));
+      sessionConfiguredAtMint = response.ok;
+    }
+
+    if (!response.ok) {
+      console.warn(
+        '[voice/session] Mint without tools rejected; minimal mint. Status:',
         response.status,
         JSON.stringify(data).slice(0, 400)
       );

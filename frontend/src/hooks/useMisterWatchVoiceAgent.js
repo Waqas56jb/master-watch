@@ -479,6 +479,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
           clientSession && typeof clientSession === "object" && !Array.isArray(clientSession)
             ? clientSession
             : null;
+        /* Prefer backend-only session (sessionConfiguredAtMint). Only then skip this — avoids huge WS payloads on WordPress. */
         if (!configuredAtMint) {
           const sessionPayload = serverSession
             ? serverSession
