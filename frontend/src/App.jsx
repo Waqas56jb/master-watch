@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MarkdownBubble from './MarkdownBubble.jsx';
-import VoiceAgent from './components/VoiceAgent.jsx';
 import { getApiRoot } from './apiRoot.js';
 
 /**
@@ -95,7 +94,6 @@ export default function App() {
   const [entries, setEntries] = useState([]);
   const [input, setInput] = useState('');
   const [isWaiting, setIsWaiting] = useState(false);
-  const [voiceOpen, setVoiceOpen] = useState(false);
   const conversationHistoryRef = useRef([]);
   const chatInFlightRef = useRef(false);
   const messagesAreaRef = useRef(null);
@@ -326,32 +324,6 @@ export default function App() {
             <div className="composer-actions">
               <button
                 type="button"
-                className={`mic-btn${voiceOpen ? ' mic-btn--active' : ''}`}
-                disabled={isWaiting}
-                onClick={() => setVoiceOpen(true)}
-                aria-label="Sprachassistent"
-                aria-pressed={voiceOpen}
-                title="Sprachassistent öffnen"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                  <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-                  <line x1="12" y1="18" x2="12" y2="22" />
-                  <line x1="8" y1="22" x2="16" y2="22" />
-                </svg>
-              </button>
-              <button
-                type="button"
                 className="send-btn"
                 disabled={isWaiting}
                 onClick={() => sendMessage()}
@@ -381,13 +353,6 @@ export default function App() {
         </div>
 
       </div>
-
-      {voiceOpen && (
-        <VoiceAgent
-          fetchChatReply={fetchChatReply}
-          onClose={() => setVoiceOpen(false)}
-        />
-      )}
     </div>
   );
 }
