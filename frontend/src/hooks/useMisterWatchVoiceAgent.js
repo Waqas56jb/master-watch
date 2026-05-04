@@ -523,6 +523,11 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
 
       ws.onerror = () => {
         if (voiceSid !== voiceGenRef.current) return;
+        console.warn(
+          "[MisterWatch voice] WebSocket to OpenAI failed (wss://api.openai.com). " +
+            "If this only happens on WordPress: allow connect-src for https://api.openai.com and wss://api.openai.com " +
+            "(see frontend/WORDPRESS-VOICE-EMBED.md)."
+        );
         setError("Connection to voice service failed. Please try again.");
         setStatus("error");
         cleanup();
