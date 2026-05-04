@@ -64,6 +64,15 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
   const agentResponseActiveRef = useRef(false);
   /** Bumped on cleanup and on each new WS — stale handlers ignore onclose/onerror. */
   const voiceGenRef            = useRef(0);
+  /** Run id for the current start() — matches voiceGenRef until cleanup bumps it. */
+  const voiceSessionRunRef     = useRef(0);
+  /** True after mint POST: session already configured on OpenAI (no client session.update). */
+  const voiceConfigAtMintRef   = useRef(false);
+  /** clientSession from POST /api/voice/session when sessionConfiguredAtMint is false. */
+  const voiceClientSessionRef  = useRef(null);
+  /** After session.created we send session.update (if any) + first response.create — once only. */
+  const voiceHandshakeDoneRef  = useRef(false);
+  const voiceHandshakeTimerRef = useRef(null);
 
   /* ── Play PCM16 audio chunk ───────────────────────────────── */
   const playChunk = useCallback((base64Audio) => {
@@ -131,6 +140,61 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
     const t = msg.type;
 
     switch (t) {
+
+      /* Must run after this before session.update / response.create — avoids Realtime error events. */
+      case "session.created":
+        if (voiceSessionRunRef.current !== voiceGenRef.current) return;
+        if (voiceHandshakeDoneRef.current) return;
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+        voiceHandshakeDoneRef.current = true;
+        if (voiceHandshakeTimerRef.current) {
+          clearTimeout(voiceHandshakeTimerRef.current);
+          voiceHandshakeTimerRef.current = null;
+        }
+
+        {
+          const configured = voiceConfigAtMintRef.current;
+          const raw        = voiceClientSessionRef.current;
+          const serverSession =
+            raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
+          if (!configured) {
+            const sessionPayload = serverSession
+              ? serverSession
+              : {
+                  modalities: ["text", "audio"],
+                  instructions: VOICE_INSTRUCTIONS,
+                  voice: "echo",
+                  input_audio_format: "pcm16",
+                  output_audio_format: "pcm16",
+                  input_audio_transcription: { model: "whisper-1", language: "de" },
+                  turn_detection: {
+                    type: "server_vad",
+                    threshold: 0.45,
+                    prefix_padding_ms: 200,
+                    silence_duration_ms: 600,
+                  },
+                  tools: VOICE_TOOLS,
+                  tool_choice: VOICE_TOOLS.length ? "auto" : "none",
+                  temperature: 0.8,
+                  max_response_output_tokens: 150,
+                };
+            wsRef.current.send(JSON.stringify({
+              type: "session.update",
+              session: sessionPayload,
+            }));
+          }
+
+          wsRef.current.send(JSON.stringify({
+            type: "response.create",
+            response: {
+              modalities: ["audio", "text"],
+              instructions:
+                "Begrüße den Nutzer in einem kurzen, freundlichen Satz auf Deutsch. Du bist der Voice-Assistent von MisterWatch und hilfst bei Uhren und dem Shop misterwatches.store.",
+            },
+          }));
+        }
+        setStatus("listening");
+        break;
 
       /* Track which audio item is currently playing (needed for truncation) */
       case "response.output_item.added":
@@ -257,6 +321,12 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
 
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
+
+    if (voiceHandshakeTimerRef.current) {
+      clearTimeout(voiceHandshakeTimerRef.current);
+      voiceHandshakeTimerRef.current = null;
+    }
+    voiceHandshakeDoneRef.current = false;
 
     if (wsRef.current) {
       try {
@@ -405,6 +475,10 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       } = sessionJson;
       if (sessionError) throw new Error(JSON.stringify(sessionError));
       const configuredAtMint = Boolean(sessionConfiguredAtMint);
+      voiceSessionRunRef.current    = voiceSid;
+      voiceConfigAtMintRef.current  = configuredAtMint;
+      voiceClientSessionRef.current = clientSession ?? null;
+      voiceHandshakeDoneRef.current = false;
 
       const realtimeModel =
         typeof modelFromServer === "string" && modelFromServer.trim()
@@ -473,51 +547,20 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
       );
       wsRef.current = ws;
 
+      voiceHandshakeTimerRef.current = setTimeout(() => {
+        if (voiceSessionRunRef.current !== voiceGenRef.current) return;
+        if (voiceHandshakeDoneRef.current) return;
+        console.warn("[MisterWatch voice] Timed out waiting for session.created from OpenAI.");
+        setError(
+          "Voice-Dienst antwortet nicht (Realtime-Handshake). Netzwerk prüfen oder Seite neu laden — auf eingebetteten Seiten ggf. CSP für wss://api.openai.com erlauben."
+        );
+        setStatus("error");
+        cleanup();
+      }, 20000);
+
       ws.onopen = () => {
         if (voiceSid !== voiceGenRef.current) return;
-        const serverSession =
-          clientSession && typeof clientSession === "object" && !Array.isArray(clientSession)
-            ? clientSession
-            : null;
-        /* Prefer backend-only session (sessionConfiguredAtMint). Only then skip this — avoids huge WS payloads on WordPress. */
-        if (!configuredAtMint) {
-          const sessionPayload = serverSession
-            ? serverSession
-            : {
-                modalities: ["text", "audio"],
-                instructions: VOICE_INSTRUCTIONS,
-                voice: "echo",
-                input_audio_format: "pcm16",
-                output_audio_format: "pcm16",
-                input_audio_transcription: { model: "whisper-1", language: "de" },
-                turn_detection: {
-                  type: "server_vad",
-                  threshold: 0.45,
-                  prefix_padding_ms: 200,
-                  silence_duration_ms: 600,
-                },
-                tools: VOICE_TOOLS,
-                tool_choice: VOICE_TOOLS.length ? "auto" : "none",
-                temperature: 0.8,
-                max_response_output_tokens: 150,
-              };
-          ws.send(JSON.stringify({
-            type: "session.update",
-            session: sessionPayload,
-          }));
-        }
-
-        /* Warm greeting kick-off (after session.update when used, same order as voiceagent frontend) */
-        ws.send(JSON.stringify({
-          type: "response.create",
-          response: {
-            modalities: ["audio", "text"],
-            instructions:
-              "Begrüße den Nutzer in einem kurzen, freundlichen Satz auf Deutsch. Du bist der Voice-Assistent von MisterWatch und hilfst bei Uhren und dem Shop misterwatches.store.",
-          },
-        }));
-
-        setStatus("listening");
+        /* Greeting + optional session.update run only after server sends session.created (see handleMessage). */
       };
 
       ws.onmessage = (e) => handleMessage(e.data);
@@ -548,6 +591,7 @@ export function useMisterWatchVoiceAgent({ fetchChatReply }) {
 
       /* 5. Stream mic audio to Realtime API */
       processor.onaudioprocess = (e) => {
+        if (!voiceHandshakeDoneRef.current) return;
         if (
           wsRef.current?.readyState !== WebSocket.OPEN ||
           isMutedRef.current
