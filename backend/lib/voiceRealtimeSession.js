@@ -91,7 +91,8 @@ function buildOpenAiMintBody(clientSession) {
       silence_duration_ms: 600,
     },
     temperature: 0.8,
-    max_output_tokens: 400,
+    /** REST create session uses `max_response_output_tokens` (see OpenAI realtime/sessions examples). */
+    max_response_output_tokens: 400,
   };
   if (clientSession && Array.isArray(clientSession.tools) && clientSession.tools.length > 0) {
     body.tools = clientSession.tools;
@@ -141,6 +142,37 @@ async function buildClientWebsocketSession(opts = {}) {
   };
 }
 
+/**
+ * Compact `session` for `session.update` when mint did not carry full config (minimal mint fallback).
+ * Reuses tool definitions from `sourceSession` but keeps instructions short — avoids multi‑KB WS payloads.
+ */
+function buildLightWebSocketSession(sourceSession) {
+  const instructions = `${VOICE_MINT_INSTRUCTIONS}\n\n${VOICE_DE_SUFFIX}`.trim();
+  const tools = sourceSession && Array.isArray(sourceSession.tools) ? sourceSession.tools : [];
+  const tool_choice = tools.length ? sourceSession?.tool_choice || 'auto' : 'none';
+  return {
+    modalities: ['text', 'audio'],
+    instructions,
+    voice: realtimeVoice(),
+    input_audio_format: 'pcm16',
+    output_audio_format: 'pcm16',
+    input_audio_transcription: {
+      model: 'whisper-1',
+      language: 'de',
+    },
+    turn_detection: {
+      type: 'server_vad',
+      threshold: 0.45,
+      prefix_padding_ms: 200,
+      silence_duration_ms: 600,
+    },
+    tools,
+    tool_choice,
+    temperature: 0.8,
+    max_response_output_tokens: 400,
+  };
+}
+
 function realtimeWireFormatMeta() {
   return {
     inputFormat: 'pcm16',
@@ -157,6 +189,7 @@ module.exports = {
   buildMinimalMintPayload,
   buildOpenAiMintBody,
   buildClientWebsocketSession,
+  buildLightWebSocketSession,
   realtimeWireFormatMeta,
   realtimeModel,
 };

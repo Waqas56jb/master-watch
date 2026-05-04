@@ -3,6 +3,7 @@ const {
   buildMinimalMintPayload,
   buildOpenAiMintBody,
   buildClientWebsocketSession,
+  buildLightWebSocketSession,
   realtimeWireFormatMeta,
   realtimeModel,
 } = require('../lib/voiceRealtimeSession');
@@ -44,10 +45,8 @@ router.post('/session', async (req, res) => {
     let response = await mintOpenAI(fullMint);
     let data = await response.json().catch(() => ({}));
     let sessionConfiguredAtMint = response.ok;
-    let usedFallbackMint = false;
 
     if (!response.ok) {
-      usedFallbackMint = true;
       console.warn(
         '[voice/session] Full mint rejected; retrying minimal mint. Status:',
         response.status,
@@ -72,11 +71,7 @@ router.post('/session', async (req, res) => {
       return res.status(502).json({ error: 'Ungültige Antwort von OpenAI (kein client_secret).' });
     }
 
-    const clientSessionOut = sessionConfiguredAtMint
-      ? null
-      : usedFallbackMint
-        ? await buildClientWebsocketSession({ maxInstructionChars: 4500 })
-        : clientSession;
+    const clientSessionOut = sessionConfiguredAtMint ? null : buildLightWebSocketSession(clientSession);
 
     return res.json({
       ephemeralKey,
