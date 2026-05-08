@@ -19,22 +19,13 @@
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
 }
 
-*,
-*::before,
-*::after {
+.app-root,
+.app-root *,
+.app-root *::before,
+.app-root *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-}
-
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
 }
 
 /* ── Page shell (desktop: centered card) ── */
@@ -400,20 +391,8 @@ body {
    with zero JavaScript.
 ───────────────────────────────────────────── */
 @media (max-width: 599px) {
-  html, body {
-    height: 100%;
-    overflow: hidden;
-  }
-
-  #root {
-    height: 100%;
-  }
-
-  /* Full-screen fixed shell — browser clips this to visual viewport
-     (above the keyboard) automatically on iOS & Android Chrome */
+  /* Keep styles scoped to chat widget only to avoid leaking into shop pages */
   .app-root {
-    position: fixed;
-    inset: 0;
     padding: 0;
     padding-top: env(safe-area-inset-top, 0px);
     align-items: stretch;
